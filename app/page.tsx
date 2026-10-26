@@ -2,6 +2,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { geocode, buildTrack, findSights, photos, pool, Stop, Sight } from "@/lib/rail";
+import { routes } from "@/data/routes";
 import type { LL } from "@/lib/geo";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
@@ -10,7 +11,12 @@ type Result = { line: LL[]; sights: Sight[]; title: string };
 
 export default function Home() {
   const [q, setQ] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<Result | null>(null), [sel, setSel] = useState<Sight | null>(null), [pics, setPics] = useState<string[] | null>(null);
+  const defaultRoute = routes[0];
+  const [res, setRes] = useState<Result | null>(() => ({
+    line: defaultRoute.line,
+    sights: defaultRoute.sights,
+    title: defaultRoute.name,
+  })), [sel, setSel] = useState<Sight | null>(null), [pics, setPics] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!sel) { setPics(null); return; }
