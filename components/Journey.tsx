@@ -7,7 +7,7 @@ export default function Journey({ route }: { route: Route }) {
   const [active, setActive] = useState(-1);
   return (
     <div className="journey">
-      <RouteMap route={route} active={active} onSelect={setActive} />
+      <RouteMap line={route.line} sights={route.sights} onPick={(s) => setActive(route.sights.indexOf(s))} />
       <ol className="sights">
         {route.sights.map((s, i) => (
           <li key={s.name}>
