@@ -25,10 +25,23 @@ async function overpass(q: string) {
   throw new Error("The OpenStreetMap track server is busy. Try again in a minute.");
 }
 export async function geocode(name: string): Promise<LL | null> {
-  try {
-    const r = await tfetch(`https://photon.komoot.io/api/?limit=1&osm_tag=railway:station&q=${encodeURIComponent(name)}`, {}, 10000);
-    return (await r.json()).features?.[0]?.geometry?.coordinates ?? null;
-  } catch { return null; }
+  const queries = [`${name} railway station`, name];
+  for (const query of queries) {
+    try {
+      const photon = await tfetch(`https://photon.komoot.io/api/?limit=5&osm_tag=railway:station&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } }, 10000);
+      const features = (await photon.json()).features ?? [];
+      const station = features.find((f: any) => f.properties?.osm_value === "station" || f.properties?.railway === "station") ?? features[0];
+      const coords = station?.geometry?.coordinates;
+      if (Array.isArray(coords) && coords.length >= 2) return [Number(coords[0]), Number(coords[1])];
+    } catch {}
+    try {
+      const nominatim = await tfetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&featuretype=city&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json", "User-Agent": "RailVista/1.0" } }, 10000);
+      const places = await nominatim.json();
+      const station = places.find((p: any) => /railway|station|halt/i.test(`${p.type} ${p.class} ${p.display_name}`)) ?? places[0];
+      if (station?.lon && station?.lat) return [Number(station.lon), Number(station.lat)];
+    } catch {}
+  }
+  return null;
 }
 
 // Real OSM rail ways, then shortest path along the rails between consecutive stops.
