@@ -15,15 +15,30 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const no = (new URL(req.url).searchParams.get("no") ?? "").replace(/\D/g, "");
   const configuredKey = process.env.RAPIDAPI_KEY;
-  const curlHeaders = process.env.CURL_AUTH_HEADER_2 ?? process.env.CURL_AUTH_HEADER ?? "";
-  const headerKey = curlHeaders.match(/(?:-H|--header)\s+["']?x-rapidapi-key:\s*([^"'\\s]+)/i)?.[1];
-  const key = headerKey || configuredKey;
-  const host = curlHeaders.match(/(?:-H|--header)\s+["']?x-rapidapi-host:\s*([^"'\\s]+)/i)?.[1] ?? "irctc1.p.rapidapi.com";
+  const configuredHeaders = [
+    process.env.CURL_AUTH_HEADER_2,
+    process.env.CURL_AUTH_HEADER,
+    process.env.CURL_AUTH_HEADER_3,
+  ];
+  const credentials = configuredHeaders.flatMap((value) => {
+    const text = value ?? "";
+    const key = text.match(/x-rapidapi-key\s*:\s*["']?([^"'\\s]+)/i)?.[1];
+    const host = text.match(/x-rapidapi-host\s*:\s*["']?([^"'\\s]+)/i)?.[1] ?? "irctc1.p.rapidapi.com";
+    return key ? [{ key, host }] : [];
+  });
+  if (configuredKey) credentials.push({ key: configuredKey, host: "irctc1.p.rapidapi.com" });
+  const uniqueCredentials = credentials.filter((credential, index, all) => all.findIndex((item) => item.key === credential.key) === index);
   if (!no) return Response.json({ error: "Enter a train number." }, { status: 400 });
-  if (!key) return Response.json({ error: "Train-number lookup is not configured. You can type the stations instead." }, { status: 501 });
+  if (!uniqueCredentials.length) return Response.json({ error: "Train-number lookup is not configured. You can type the stations instead." }, { status: 501 });
   try {
-    const r = await fetch(`https://${host}/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": key, "x-rapidapi-host": host }, signal: AbortSignal.timeout(15000), cache: "no-store" });
-    const j = await r.json().catch(() => null);
+    let r: Response | null = null;
+    let j: any;
+    for (const credential of uniqueCredentials) {
+      r = await fetch(`https://${credential.host}/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": credential.key, "x-rapidapi-host": credential.host }, signal: AbortSignal.timeout(15000), cache: "no-store" });
+      j = await r.json().catch(() => null);
+      if (r.ok || (r.status !== 401 && r.status !== 403)) break;
+    }
+    if (!r) throw new Error("No RapidAPI credentials configured");
     if (!r.ok) {
       const message = String(j?.message ?? "");
       const unsubscribed = r.status === 401 || r.status === 403 || /not subscribed|subscription|plan/i.test(message);
