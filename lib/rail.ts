@@ -25,10 +25,11 @@ async function overpass(q: string) {
   throw new Error("The OpenStreetMap track server is busy. Try again in a minute.");
 }
 export async function geocode(name: string): Promise<LL | null> {
-  const queries = [`${name} railway station`, name];
+  const clean = name.replace(/\s+railway\s+station$/i, "").trim();
+  const queries = [`${clean} railway station`, clean];
   for (const query of queries) {
     try {
-      const photon = await tfetch(`https://photon.komoot.io/api/?limit=5&osm_tag=railway:station&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } }, 10000);
+      const photon = await tfetch(`https://photon.komoot.io/api/?limit=10&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } }, 10000);
       const features = (await photon.json()).features ?? [];
       const station = features.find((f: any) => f.properties?.osm_value === "station" || f.properties?.railway === "station") ?? features[0];
       const coords = station?.geometry?.coordinates;

@@ -2,8 +2,10 @@ function collectStops(value: unknown): string[] {
   if (!value || typeof value !== "object") return [];
   if (Array.isArray(value)) return value.flatMap(collectStops);
   const item = value as Record<string, unknown>;
-  const name = ["station_name", "stationName", "stationNameEn", "name", "stnName", "station"].find((key) => typeof item[key] === "string" && item[key]);
-  if (name) return [String(item[name])];
+  const stationName = item.station_name;
+  if (typeof stationName === "string" && stationName.trim()) return [stationName.trim()];
+  const station = item.station;
+  if (typeof station === "string" && station.trim()) return [station.trim()];
   return Object.values(item).flatMap(collectStops);
 }
 
@@ -14,7 +16,8 @@ export async function GET(req: Request) {
   const no = (new URL(req.url).searchParams.get("no") ?? "").replace(/\D/g, "");
   const configuredKey = process.env.RAPIDAPI_KEY;
   const curlHeaders = process.env.CURL_AUTH_HEADER_2 ?? process.env.CURL_AUTH_HEADER ?? "";
-  const key = configuredKey || curlHeaders.match(/(?:-H|--header)\s+["']?x-rapidapi-key:\s*([^"'\\s]+)/i)?.[1];
+  const headerKey = curlHeaders.match(/(?:-H|--header)\s+["']?x-rapidapi-key:\s*([^"'\\s]+)/i)?.[1];
+  const key = headerKey || configuredKey;
   const host = curlHeaders.match(/(?:-H|--header)\s+["']?x-rapidapi-host:\s*([^"'\\s]+)/i)?.[1] ?? "irctc1.p.rapidapi.com";
   if (!no) return Response.json({ error: "Enter a train number." }, { status: 400 });
   if (!key) return Response.json({ error: "Train-number lookup is not configured. You can type the stations instead." }, { status: 501 });
