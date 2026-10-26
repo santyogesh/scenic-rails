@@ -27,7 +27,10 @@ export default function Home() {
       if (/^\d{4,6}$/.test(t)) {
         setMsg("Looking up train " + t + "…");
         const r = await fetch("/api/train?no=" + t, { signal: AbortSignal.timeout(20000) }), j = await r.json();
-        if (!r.ok) throw new Error(j.error); list = j.stops;
+        if (!r.ok) {
+          throw new Error(j.error ?? "Train lookup failed. You can enter the stations manually, separated by commas.");
+        }
+        list = j.stops;
       } else list = t.split(",").map((s) => s.trim()).filter(Boolean);
       if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
       setMsg(`Locating ${list.length} station${list.length === 1 ? "" : "s"}…`);

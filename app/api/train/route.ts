@@ -24,7 +24,16 @@ export async function GET(req: Request) {
   try {
     const r = await fetch(`https://${host}/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": key, "x-rapidapi-host": host }, signal: AbortSignal.timeout(15000), cache: "no-store" });
     const j = await r.json().catch(() => null);
-    if (!r.ok) return Response.json({ error: j?.message ?? "Train lookup failed. Check the RapidAPI key." }, { status: 502 });
+    if (!r.ok) {
+      const message = String(j?.message ?? "");
+      const unsubscribed = r.status === 401 || r.status === 403 || /not subscribed|subscription|plan/i.test(message);
+      return Response.json({
+        error: unsubscribed
+          ? "This RapidAPI key is not subscribed to the selected train API. Subscribe to the API in RapidAPI, or enter stations manually as Mumbai, Surat, Vadodara."
+          : message || "Train lookup failed. Check the RapidAPI key and host.",
+        code: unsubscribed ? "RAPIDAPI_NOT_SUBSCRIBED" : "TRAIN_LOOKUP_FAILED",
+      }, { status: unsubscribed ? 424 : 502 });
+    }
     const stops = [...new Set(collectStops(j?.data ?? j))];
     if (stops.length < 2) return Response.json({ error: "No stations were returned for that train." }, { status: 404 });
     return Response.json({ stops });
