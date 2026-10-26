@@ -33,21 +33,32 @@ export async function GET(req: Request) {
   try {
     let r: Response | null = null;
     let j: any;
+    let lastMessage = "";
+    let lastStatus = 502;
     for (const credential of uniqueCredentials) {
-      r = await fetch(`https://${credential.host}/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": credential.key, "x-rapidapi-host": credential.host }, signal: AbortSignal.timeout(15000), cache: "no-store" });
-      j = await r.json().catch(() => null);
-      if (r.ok || (r.status !== 401 && r.status !== 403)) break;
+      const candidate = await fetch(`https://${credential.host}/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": credential.key, "x-rapidapi-host": credential.host }, signal: AbortSignal.timeout(15000), cache: "no-store" });
+      const candidateJson = await candidate.json().catch(() => null);
+      r = candidate;
+      j = candidateJson;
+      lastStatus = candidate.status;
+      lastMessage = String(candidateJson?.message ?? "");
+      if (candidate.ok) break;
+      // A key can be rate-limited or unsubscribed while another configured key works.
+      // Continue trying every configured credential before reporting an error.
     }
     if (!r) throw new Error("No RapidAPI credentials configured");
     if (!r.ok) {
-      const message = String(j?.message ?? "");
-      const unsubscribed = r.status === 401 || r.status === 403 || /not subscribed|subscription|plan/i.test(message);
+      const message = lastMessage;
+      const unsubscribed = lastStatus === 401 || lastStatus === 403 || /not subscribed|subscription|plan/i.test(message);
+      const rateLimited = lastStatus === 429 || /too many requests|rate limit/i.test(message);
       return Response.json({
         error: unsubscribed
-          ? "This RapidAPI key is not subscribed to the selected train API. Subscribe to the API in RapidAPI, or enter stations manually as Mumbai, Surat, Vadodara."
-          : message || "Train lookup failed. Check the RapidAPI key and host.",
-        code: unsubscribed ? "RAPIDAPI_NOT_SUBSCRIBED" : "TRAIN_LOOKUP_FAILED",
-      }, { status: unsubscribed ? 424 : 502 });
+          ? "The configured RapidAPI key is not subscribed to the train API. Subscribe to irctc1 on RapidAPI, or enter stations manually."
+          : rateLimited
+            ? "RapidAPI rate limit reached. Please try again shortly or enter stations manually."
+            : message || "Train lookup failed. Check the RapidAPI key and host.",
+        code: unsubscribed ? "RAPIDAPI_NOT_SUBSCRIBED" : rateLimited ? "RAPIDAPI_RATE_LIMITED" : "TRAIN_LOOKUP_FAILED",
+      }, { status: unsubscribed ? 424 : rateLimited ? 429 : 502 });
     }
     const stops = [...new Set(collectStops(j?.data ?? j))];
     if (stops.length < 2) return Response.json({ error: "No stations were returned for that train." }, { status: 404 });
