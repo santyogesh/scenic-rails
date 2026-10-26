@@ -15,33 +15,31 @@ export async function pool<T, R>(items: T[], n: number, fn: (x: T, i: number) =>
   return out;
 }
 async function overpass(q: string) {
-  for (let t = 0; t < 4; t++) {
+  for (let t = 0; t < 2; t++) {
     try {
-      const r = await tfetch(OP[t % 2], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) }, 45000);
+      const r = await tfetch(OP[t % 2], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) }, 18000);
       if (r.ok) return r.json();
     } catch {}
-    await new Promise((r) => setTimeout(r, 1500 * (t + 1)));
+    if (t === 0) await new Promise((r) => setTimeout(r, 700));
   }
-  throw new Error("The OpenStreetMap track server is busy. Try again in a minute.");
+  return { elements: [] };
 }
 export async function geocode(name: string): Promise<LL | null> {
   const clean = name.replace(/\s+railway\s+station$/i, "").trim();
-  const queries = [`${clean} railway station`, clean];
-  for (const query of queries) {
-    try {
-      const photon = await tfetch(`https://photon.komoot.io/api/?limit=10&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } }, 10000);
-      const features = (await photon.json()).features ?? [];
-      const station = features.find((f: any) => f.properties?.osm_value === "station" || f.properties?.railway === "station") ?? features[0];
-      const coords = station?.geometry?.coordinates;
-      if (Array.isArray(coords) && coords.length >= 2) return [Number(coords[0]), Number(coords[1])];
-    } catch {}
-    try {
-      const nominatim = await tfetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&featuretype=city&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json", "User-Agent": "RailVista/1.0" } }, 10000);
-      const places = await nominatim.json();
-      const station = places.find((p: any) => /railway|station|halt/i.test(`${p.type} ${p.class} ${p.display_name}`)) ?? places[0];
-      if (station?.lon && station?.lat) return [Number(station.lon), Number(station.lat)];
-    } catch {}
-  }
+  const query = `${clean} railway station`;
+  try {
+    const photon = await tfetch(`https://photon.komoot.io/api/?limit=8&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json" } }, 7000);
+    const features = (await photon.json()).features ?? [];
+    const station = features.find((f: any) => /station|halt|railway/i.test(`${f.properties?.osm_value} ${f.properties?.type} ${f.properties?.name}`)) ?? features[0];
+    const coords = station?.geometry?.coordinates;
+    if (Array.isArray(coords) && coords.length >= 2 && coords.every((n: unknown) => Number.isFinite(Number(n)))) return [Number(coords[0]), Number(coords[1])];
+  } catch {}
+  try {
+    const nominatim = await tfetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&q=${encodeURIComponent(query)}`, { headers: { Accept: "application/json", "User-Agent": "RailVista/1.0" } }, 7000);
+    const places = await nominatim.json();
+    const station = places.find((p: any) => /railway|station|halt/i.test(`${p.type} ${p.class} ${p.display_name}`)) ?? places[0];
+    if (station?.lon && station?.lat) return [Number(station.lon), Number(station.lat)];
+  } catch {}
   return null;
 }
 

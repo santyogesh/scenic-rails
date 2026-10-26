@@ -30,14 +30,20 @@ export default function Home() {
         if (!r.ok) throw new Error(j.error); list = j.stops;
       } else list = t.split(",").map((s) => s.trim()).filter(Boolean);
       if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
-      setMsg("Locating stations…");
-      const at = await pool(list, 4, geocode);
+      setMsg(`Locating ${list.length} station${list.length === 1 ? "" : "s"}…`);
+      const at = await Promise.race([
+        pool(list, 4, geocode),
+        new Promise<Awaited<ReturnType<typeof geocode>>[]>((_, reject) => setTimeout(() => reject(new Error("Station lookup timed out. Try adding the city name.")), 16000)),
+      ]);
       const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
       if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
       const { line, bad } = await buildTrack(stops, setMsg);
+      const title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
+      setRes({ line, sights: [], title });
+      setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "Loading scenic spots…");
       const sights = await findSights(line, setMsg);
-      setRes({ line, sights, title: `${stops[0].name} to ${stops[stops.length - 1].name}` });
-      setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
+      setRes({ line, sights, title });
+      setMsg("");
     } catch (err) {
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
     } finally { setBusy(false); }
