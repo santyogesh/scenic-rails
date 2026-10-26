@@ -15,6 +15,8 @@ export default function Journey({ route }: { route: Route }) {
               <h3>{s.name}</h3>
               <p>{s.text}</p>
               {i === active && <p className="tip">{s.tip}</p>}
+              {i === active && s.img && <img src={s.img} alt="" width={300} />}
+              {i === active && s.url && <a href={s.url} target="_blank" rel="noreferrer">Read more</a>}
             </button>
           </li>
         ))}

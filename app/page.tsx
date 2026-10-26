@@ -5,6 +5,7 @@ export default function Home() {
     <main className="home">
       <h1>Look out the window.</h1>
       <p className="lead">Pick a train journey and see the coastlines, viaducts and mountain passes you will pass, in order.</p>
+      <p><Link href="/plan"><strong>Plan by train number or stations</strong></Link></p>
       <ul className="list">
         {routes.map((r) => (
           <li key={r.slug}>
