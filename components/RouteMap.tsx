@@ -10,20 +10,20 @@ export default function RouteMap({ line, sights, onPick }: { line: LL[]; sights:
   const [riding, setRiding] = useState(false);
 
   useEffect(() => {
+    if (!box.current || line.length < 2 || line.some(([lng, lat]) => !Number.isFinite(lng) || !Number.isFinite(lat))) return;
     const b = line.reduce((a, c) => a.extend(c), new maplibregl.LngLatBounds(line[0], line[0]));
     const m = new maplibregl.Map({
-      container: box.current!, bounds: b, fitBoundsOptions: { padding: 90 }, pitch: 55, maxPitch: 80,
+      container: box.current, bounds: b, fitBoundsOptions: { padding: 90 }, pitch: 0,
       style: {
         version: 8,
         sources: {
           osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, attribution: "© OpenStreetMap contributors" },
-          dem: { type: "raster-dem", tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"], tileSize: 256, encoding: "terrarium", maxzoom: 14 },
         },
         layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.5, "raster-brightness-max": 0.6, "raster-contrast": 0.25 } }],
-        terrain: { source: "dem", exaggeration: 1.6 },
       },
     });
     map.current = m;
+    m.on("error", (event) => console.error("[v0] MapLibre error", event.error));
     m.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
     sights.forEach((s) => {
       const el = document.createElement("button");
@@ -64,5 +64,5 @@ export default function RouteMap({ line, sights, onPick }: { line: LL[]; sights:
     };
     raf.current = requestAnimationFrame(step);
   };
-  return (<><div ref={box} className="map" /><button className="ride" onClick={ride}>{riding ? "Stop" : "Ride the route"}</button></>);
+  return (<><div ref={box} className="route-map" /><button className="ride" onClick={ride}>{riding ? "Stop" : "Ride the route"}</button></>);
 }
