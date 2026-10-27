@@ -34,15 +34,22 @@ export async function GET(req: Request) {
       }, { status: response.status === 404 ? 404 : response.status === 429 ? 429 : response.status === 401 ? 502 : 502 });
     }
 
-    const stops = Array.isArray(payload?.data?.stops)
-      ? payload.data.stops
-          .sort((a: any, b: any) => Number(a.sequence ?? 0) - Number(b.sequence ?? 0))
-          .map((stop: any) => String(stop.name ?? stop.station_name ?? stop.station ?? "").trim())
-          .filter(Boolean)
-      : [...new Set(collectStops(payload?.data ?? payload))];
-    const uniqueStops = [...new Set(stops)];
+    const rawStops = Array.isArray(payload?.data?.stops) ? payload.data.stops : [];
+    const stops = rawStops
+      .sort((a: any, b: any) => Number(a.sequence ?? 0) - Number(b.sequence ?? 0))
+      .map((stop: any) => ({
+        name: String(stop.name ?? stop.station_name ?? stop.station ?? "").trim(),
+        lat: Number(stop.lat),
+        lng: Number(stop.lng),
+        sequence: Number(stop.sequence ?? 0),
+      }))
+      .filter((stop: any) => stop.name && Number.isFinite(stop.lat) && Number.isFinite(stop.lng));
+    const fallbackNames = [...new Set(collectStops(payload?.data ?? payload))];
+    const uniqueStops = stops.length >= 2
+      ? stops.filter((stop: any, index: number, all: any[]) => all.findIndex((candidate) => candidate.name === stop.name) === index)
+      : fallbackNames.map((name) => ({ name, lat: null, lng: null, sequence: 0 }));
     if (uniqueStops.length < 2) return Response.json({ error: "RailRadar returned no usable stations for that train.", code: "NO_STATIONS" }, { status: 404 });
-    return Response.json({ stops: uniqueStops });
+    return Response.json({ stops: uniqueStops.map((stop: { name: string; lat: number | null; lng: number | null }) => ({ name: stop.name, lat: stop.lat, lng: stop.lng })) });
   } catch {
     return Response.json({ error: "RailRadar train lookup timed out. Try again or enter the station names.", code: "TRAIN_LOOKUP_TIMEOUT" }, { status: 504 });
   }

@@ -29,22 +29,30 @@ export default function Home() {
   async function go(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setMsg("Starting…");
     try {
-      const t = q.trim(); let list: string[];
+      const t = q.trim();
+      let list: string[];
+      let coordinates: Array<LL | null> = [];
       if (/^\d{4,6}$/.test(t)) {
         setMsg("Looking up train " + t + "…");
         const r = await fetch("/api/train?no=" + t, { signal: AbortSignal.timeout(20000) }), j = await r.json();
         if (!r.ok) {
           throw new Error(j.error ?? "Train lookup failed. You can enter the stations manually, separated by commas.");
         }
-        list = j.stops;
+        list = (j.stops ?? []).map((stop: string | { name?: string; lat?: number | null; lng?: number | null }) => typeof stop === "string" ? stop : stop.name ?? "").filter(Boolean);
+        coordinates = (j.stops ?? []).map((stop: string | { name?: string; lat?: number | null; lng?: number | null }) => {
+          if (typeof stop === "string" || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lng)) return null;
+          return [Number(stop.lng), Number(stop.lat)] as LL;
+        });
       } else list = t.split(",").map((s) => s.trim()).filter(Boolean);
       if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
-      setMsg(`Locating ${list.length} station${list.length === 1 ? "" : "s"}…`);
-      const at = await Promise.race([
-        pool(list, 4, geocode),
+      const missing = list.reduce<number[]>((out, _, i) => { if (!coordinates[i]) out.push(i); return out; }, []);
+      setMsg(missing.length ? `Locating ${missing.length} station${missing.length === 1 ? "" : "s"}…` : "Mapping the route…");
+      const located = missing.length ? await Promise.race([
+        pool(missing, 4, (i) => geocode(list[i])),
         new Promise<Awaited<ReturnType<typeof geocode>>[]>((_, reject) => setTimeout(() => reject(new Error("Station lookup timed out. Try adding the city name.")), 16000)),
-      ]);
-      const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+      ]) : [];
+      located.forEach((point, i) => { coordinates[missing[i]] = point; });
+      const stops: Stop[] = list.flatMap((name, i) => (coordinates[i] ? [{ name, at: coordinates[i]! }] : []));
       if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
       const { line, bad } = await buildTrack(stops, setMsg);
       const title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
