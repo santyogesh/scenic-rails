@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { hav, LL } from "@/lib/geo";
-import type { Sight, Stop } from "@/lib/rail";
+import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
 import type { Route } from "@/data/routes";
 
 export type RouteMapProps = {
@@ -14,9 +14,23 @@ export type RouteMapProps = {
   route?: Route;
   active?: number;
   onSelect?: (index: number) => void;
+  liveStatus?: LiveTrainStatus | null;
+  trainNumber?: string;
+  onRefreshLive?: () => void;
 };
 
-export default function RouteMap({ line: propLine, stops: propStops, sights: propSights, onPick, route, active, onSelect }: RouteMapProps) {
+export default function RouteMap({
+  line: propLine,
+  stops: propStops,
+  sights: propSights,
+  onPick,
+  route,
+  active,
+  onSelect,
+  liveStatus,
+  trainNumber,
+  onRefreshLive,
+}: RouteMapProps) {
   const rawLine = propLine ?? route?.line ?? [];
   const line = useMemo(() => {
     return rawLine.filter((p): p is LL => Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number" && !isNaN(p[0]) && !isNaN(p[1]));
@@ -34,10 +48,12 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
   const map = useRef<maplibregl.Map | null>(null);
   const stopMarkers = useRef<maplibregl.Marker[]>([]);
   const sightMarkers = useRef<maplibregl.Marker[]>([]);
+  const liveMarker = useRef<maplibregl.Marker | null>(null);
   const raf = useRef(0);
   const animRaf = useRef(0);
   const [riding, setRiding] = useState(false);
   const [activeStopIdx, setActiveStopIdx] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 1. Initialize OpenStreetMap map & draw rail track
   useEffect(() => {
@@ -146,6 +162,10 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
       stopMarkers.current = [];
       sightMarkers.current.forEach((mk) => mk.remove());
       sightMarkers.current = [];
+      if (liveMarker.current) {
+        liveMarker.current.remove();
+        liveMarker.current = null;
+      }
       m.remove();
       map.current = null;
     };
@@ -164,26 +184,31 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
 
       const dot = document.createElement("button");
       dot.type = "button";
-      dot.className = idx === 0 || idx === stops.length - 1 ? "stop-dot terminal" : "stop-dot";
+      const isTerm = idx === 0 || idx === stops.length - 1;
+      const isDeparted = st.status === "departed";
+      const isCurr = st.status === "current";
+      dot.className = `stop-dot ${isTerm ? "terminal" : ""} ${isDeparted ? "departed" : ""} ${isCurr ? "current" : ""}`.trim();
       dot.title = `${st.name}${st.code ? ` (${st.code})` : ""}`;
       dot.setAttribute("aria-label", st.name);
 
       const label = document.createElement("span");
-      label.className = "stop-label";
+      label.className = `stop-label ${isDeparted ? "departed" : ""}`.trim();
       label.textContent = st.code ? `${st.name} (${st.code})` : st.name;
 
       wrap.appendChild(dot);
       wrap.appendChild(label);
 
       const metaParts: string[] = [];
+      if (st.status) metaParts.push(st.status.toUpperCase());
       if (st.arrival) metaParts.push(`Arr: ${st.arrival}`);
       if (st.departure) metaParts.push(`Dep: ${st.departure}`);
+      if (st.platform) metaParts.push(`Plat: ${st.platform}`);
       if (st.distance !== undefined) metaParts.push(`${st.distance} km`);
 
       const popup = new maplibregl.Popup({ offset: 14, closeButton: false }).setHTML(
-        `<div style="color:#070b14;font-family:system-ui,sans-serif;padding:2px 4px">
-          <strong style="font-size:0.9rem">${st.name}${st.code ? ` (${st.code})` : ""}</strong>
-          ${metaParts.length ? `<div style="font-size:0.78rem;color:#334155;margin-top:2px">${metaParts.join(" • ")}</div>` : ""}
+        `<div style="color:#070b14;font-family:system-ui,sans-serif;padding:3px 6px">
+          <strong style="font-size:0.92rem;display:block">${st.name}${st.code ? ` (${st.code})` : ""}</strong>
+          ${metaParts.length ? `<div style="font-size:0.78rem;color:#334155;margin-top:3px">${metaParts.join(" • ")}</div>` : ""}
         </div>`
       );
 
@@ -201,7 +226,82 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
     });
   }, [stops, line]);
 
-  // 3. Plot scenic sights on the map (without recreating the map)
+  // 3. Visualise LIVE RUNNING TRAIN on the map
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+
+    if (!liveStatus?.currentLocation?.at) {
+      if (liveMarker.current) {
+        liveMarker.current.remove();
+        liveMarker.current = null;
+      }
+      return;
+    }
+
+    const trainCoords = liveStatus.currentLocation.at;
+
+    if (!liveMarker.current) {
+      const wrap = document.createElement("div");
+      wrap.className = "live-train-marker";
+      wrap.setAttribute("title", `Live Train ${liveStatus.trainNumber}`);
+
+      const radar = document.createElement("div");
+      radar.className = "live-radar-pulse";
+
+      const badge = document.createElement("div");
+      badge.className = "live-train-badge";
+      badge.innerHTML = `
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h12v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-4-4-8-4zm0 2c3.51 0 6 .34 6 2v2H6V6c0-1.66 2.49-2 6-2zm-6 6h12v5.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V10zm2 8c-.83 0-1.5-.67-1.5-1.5S7.17 15 8 15s1.5.67 1.5 1.5S8.83 18 8 18zm8 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+        </svg>
+      `;
+
+      const tag = document.createElement("div");
+      tag.className = "live-train-tag";
+      const isLate = (liveStatus.delayMinutes || 0) > 0;
+      tag.innerHTML = `<span>🚆 ${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
+
+      wrap.appendChild(radar);
+      wrap.appendChild(badge);
+      wrap.appendChild(tag);
+
+      const delayColor = isLate ? "#f59e0b" : "#10b981";
+      const popup = new maplibregl.Popup({ offset: 20, closeButton: true }).setHTML(`
+        <div class="live-popup-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:6px">
+            <strong style="color:#0f172a;font-size:0.95rem">🚆 Train ${liveStatus.trainNumber}</strong>
+            <span style="font-size:0.75rem;font-weight:700;color:${delayColor};background:${delayColor}15;padding:2px 6px;border-radius:4px">${isLate ? `+${liveStatus.delayMinutes} min delay` : "On Time"}</span>
+          </div>
+          <div style="font-size:0.82rem;color:#334155;margin-bottom:4px">
+            <strong>Location:</strong> ${liveStatus.currentLocation.stationName || "In transit"}
+          </div>
+          ${liveStatus.nextHalt ? `<div style="font-size:0.82rem;color:#334155;margin-bottom:4px"><strong>Next stop:</strong> ${liveStatus.nextHalt.stationName} ${liveStatus.nextHalt.scheduledArrival ? `(Arr ${liveStatus.nextHalt.scheduledArrival})` : ""}</div>` : ""}
+          ${liveStatus.currentLocation.speedKmh ? `<div style="font-size:0.82rem;color:#334155;margin-bottom:4px"><strong>Live Speed:</strong> ~${liveStatus.currentLocation.speedKmh} km/h</div>` : ""}
+          ${liveStatus.currentLocation.distanceFromOriginKm !== undefined ? `<div style="font-size:0.82rem;color:#64748b">Distance: ${liveStatus.currentLocation.distanceFromOriginKm} km covered</div>` : ""}
+          <div style="font-size:0.7rem;color:#94a3b8;margin-top:6px">Updated: ${new Date(liveStatus.lastUpdatedAt).toLocaleTimeString()}</div>
+        </div>
+      `);
+
+      wrap.onclick = () => {
+        m.flyTo({ center: trainCoords, zoom: 11, speed: 1.2 });
+      };
+
+      liveMarker.current = new maplibregl.Marker({ element: wrap, anchor: "center" })
+        .setLngLat(trainCoords)
+        .setPopup(popup)
+        .addTo(m);
+    } else {
+      liveMarker.current.setLngLat(trainCoords);
+      const tag = liveMarker.current.getElement().querySelector(".live-train-tag");
+      if (tag) {
+        const isLate = (liveStatus.delayMinutes || 0) > 0;
+        tag.innerHTML = `<span>🚆 ${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
+      }
+    }
+  }, [liveStatus]);
+
+  // 4. Plot scenic sights on the map
   useEffect(() => {
     const m = map.current;
     if (!m) return;
@@ -229,6 +329,24 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
       map.current.flyTo({ center: sights[active].at, zoom: 12, speed: 1.2 });
     }
   }, [active, sights]);
+
+  const focusLiveTrain = () => {
+    if (map.current && liveStatus?.currentLocation?.at) {
+      map.current.flyTo({ center: liveStatus.currentLocation.at, zoom: 11, pitch: 45, speed: 1.4 });
+      liveMarker.current?.togglePopup();
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (onRefreshLive) {
+      setIsRefreshing(true);
+      try {
+        await onRefreshLive();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 600);
+      }
+    }
+  };
 
   const ride = () => {
     const m = map.current;
@@ -278,21 +396,111 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
     }
   };
 
+  const isLate = (liveStatus?.delayMinutes || 0) > 0;
+
   return (
     <>
       <div ref={box} className="map" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+
+      {/* Live Train Running HUD Overlay */}
+      {liveStatus && (
+        <div className="live-hud glass" aria-label="Live Train Running Status">
+          <div className="live-hud-top">
+            <div className="live-pulse-badge">
+              <span className="live-dot" />
+              <span>LIVE RUNNING STATUS</span>
+            </div>
+            <div className="live-hud-actions">
+              <button
+                type="button"
+                className="live-action-btn"
+                title="Locate live train on map"
+                onClick={focusLiveTrain}
+              >
+                📍 Locate
+              </button>
+              {onRefreshLive && (
+                <button
+                  type="button"
+                  className={isRefreshing ? "live-action-btn spinning" : "live-action-btn"}
+                  title="Refresh GPS location"
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                >
+                  🔄
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="live-hud-main">
+            <div className="live-status-row">
+              <span className="live-train-no">🚆 {liveStatus.trainNumber}</span>
+              <span className={`live-delay-pill ${isLate ? "late" : "ontime"}`}>
+                {isLate ? `+${liveStatus.delayMinutes}m Late` : "On Time"}
+              </span>
+            </div>
+
+            <div className="live-location-desc">
+              <strong>Location:</strong> {liveStatus.currentLocation?.stationName || "In transit"}
+            </div>
+
+            {liveStatus.nextHalt && (
+              <div className="live-next-halt">
+                <span className="arrow">➔</span>
+                <span>
+                  Next: <strong>{liveStatus.nextHalt.stationName}</strong>
+                  {liveStatus.nextHalt.scheduledArrival ? ` (${liveStatus.nextHalt.scheduledArrival})` : ""}
+                  {liveStatus.nextHalt.platform ? ` • Plat ${liveStatus.nextHalt.platform}` : ""}
+                </span>
+              </div>
+            )}
+
+            {liveStatus.currentLocation?.distanceFromOriginKm !== undefined && (
+              <div className="live-progress-wrap">
+                <div className="live-progress-bar">
+                  <div
+                    className="live-progress-fill"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          5,
+                          ((liveStatus.currentLocation.distanceFromOriginKm || 0) /
+                            (liveStatus.totalDistance || 1388)) *
+                            100
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <div className="live-progress-label">
+                  <span>{liveStatus.currentLocation.distanceFromOriginKm} km covered</span>
+                  <span>{liveStatus.totalDistance ? `${liveStatus.totalDistance} km total` : ""}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {stops.length > 0 && (
         <div className="stops-strip glass" aria-label="Train stops">
-          <div className="stops-strip-title">Stops ({stops.length})</div>
+          <div className="stops-strip-title">
+            <span>Stops ({stops.length})</span>
+            {liveStatus && <span className="live-tag-mini">LIVE</span>}
+          </div>
           <div className="stops-list">
             {stops.map((st, idx) => (
               <button
                 key={`${st.code || st.name}-${idx}`}
                 type="button"
-                className={activeStopIdx === idx ? "stop-chip active" : "stop-chip"}
+                className={`stop-chip ${activeStopIdx === idx ? "active" : ""} ${
+                  st.status === "departed" ? "departed" : ""
+                } ${st.code === liveStatus?.nextHalt?.stationCode ? "next-halt-chip" : ""}`.trim()}
                 onClick={() => focusStop(st, idx)}
               >
-                <span className="stop-num">{idx + 1}</span>
+                <span className="stop-num">{st.status === "departed" ? "✓" : idx + 1}</span>
                 <span className="stop-name">{st.name}</span>
                 {st.code && <small className="stop-code">{st.code}</small>}
               </button>
@@ -300,6 +508,7 @@ export default function RouteMap({ line: propLine, stops: propStops, sights: pro
           </div>
         </div>
       )}
+
       <button className="ride" onClick={ride}>
         {riding ? "Stop" : "Ride the route"}
       </button>

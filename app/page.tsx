@@ -1,12 +1,19 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { geocodeStop, buildTrack, findSights, photos, pool, Stop, Sight } from "@/lib/rail";
+import { geocodeStop, buildTrack, findSights, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
 import type { LL } from "@/lib/geo";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
-type Result = { line: LL[]; stops: Stop[]; sights: Sight[]; title: string };
+type Result = {
+  line: LL[];
+  stops: Stop[];
+  sights: Sight[];
+  title: string;
+  liveStatus?: LiveTrainStatus | null;
+  trainNumber?: string;
+};
 
 export default function Home() {
   const [q, setQ] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
@@ -20,6 +27,28 @@ export default function Home() {
     return () => { ok = false; removeEventListener("keydown", k); };
   }, [sel]);
 
+  const refreshLiveStatus = async () => {
+    if (!res?.trainNumber) return;
+    try {
+      const r = await fetch(`/api/train?no=${encodeURIComponent(res.trainNumber)}&liveOnly=1`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.liveStatus) {
+          setRes((prev) => (prev ? { ...prev, liveStatus: j.liveStatus } : prev));
+        }
+      }
+    } catch {}
+  };
+
+  // Periodic live refresh every 25s when tracking a live train
+  useEffect(() => {
+    if (!res?.trainNumber || !res.liveStatus?.isLive) return;
+    const timer = setInterval(() => {
+      refreshLiveStatus();
+    }, 25000);
+    return () => clearInterval(timer);
+  }, [res?.trainNumber, res?.liveStatus?.isLive]);
+
   async function go(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setMsg("Starting…");
     try {
@@ -28,10 +57,15 @@ export default function Home() {
       let stops: Stop[] = [];
       let title = "";
       let bad = 0;
+      let liveStatus: LiveTrainStatus | null = null;
+      let trainNumber: string | undefined = undefined;
+
       if (/^\d{4,6}$/.test(t)) {
+        trainNumber = t;
         setMsg("Looking up train " + t + " on RailRadar…");
         const r = await fetch("/api/train?no=" + t, { signal: AbortSignal.timeout(20000) }), j = await r.json();
         if (!r.ok) throw new Error(j.error);
+        liveStatus = j.liveStatus || null;
         if (Array.isArray(j.stationStops) && j.stationStops.length >= 2) {
           stops = j.stationStops;
         }
@@ -61,8 +95,8 @@ export default function Home() {
         title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
       }
 
-      // First thing: plot all stops & route on the open-source map immediately!
-      setRes({ line, stops, sights: [], title });
+      // First thing: plot all stops & live train on the open-source map immediately!
+      setRes({ line, stops, sights: [], title, liveStatus, trainNumber });
       setBusy(false);
       setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
 
@@ -78,10 +112,22 @@ export default function Home() {
 
   if (res) return (
     <main className="stage">
-      <RouteMap line={res.line} stops={res.stops} sights={res.sights} onPick={setSel} />
+      <RouteMap
+        line={res.line}
+        stops={res.stops}
+        sights={res.sights}
+        onPick={setSel}
+        liveStatus={res.liveStatus}
+        trainNumber={res.trainNumber}
+        onRefreshLive={res.trainNumber ? refreshLiveStatus : undefined}
+      />
       <div className="bar glass">
         <strong>{res.title}</strong>
-        <span>{res.stops.length} stops plotted{res.sights.length ? ` • ${res.sights.length} scenic spots` : ""}. Tap a stop or pin.</span>
+        <span>
+          {res.stops.length} stops
+          {res.liveStatus ? ` • Live Tracking active` : ""}
+          {res.sights.length ? ` • ${res.sights.length} scenic spots` : ""}
+        </span>
         <button onClick={() => setRes(null)}>New search</button>
       </div>
       {sel && (

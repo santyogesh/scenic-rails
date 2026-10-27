@@ -66,3 +66,54 @@ form button:disabled{opacity:.5}
 .sight img{border-radius:8px;margin-top:8px;max-width:100%;height:auto}
 .sight a{display:inline-block;margin-top:6px;color:var(--teal);font-size:.85rem}
 @media(max-width:768px){.journey{flex-direction:column-reverse}.sights{width:100%;max-width:100%;height:45vh;border-left:0;border-top:1px solid rgba(255,255,255,.1)}}
+
+/* Live Running Train Visualisation & Radar Marker */
+.live-train-marker{position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10}
+.live-radar-pulse{position:absolute;inset:-8px;border-radius:50%;background:rgba(16,185,129,0.3);border:2px solid #10b981;animation:radarPulse 2s ease-out infinite;pointer-events:none}
+@keyframes radarPulse{0%{transform:scale(0.6);opacity:1}100%{transform:scale(2.2);opacity:0}}
+.live-train-badge{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#059669,#10b981);color:#fff;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 0 16px rgba(16,185,129,0.9),0 4px 10px rgba(0,0,0,0.5);position:relative;z-index:2;transition:transform .2s ease}
+.live-train-marker:hover .live-train-badge{transform:scale(1.12)}
+.live-train-tag{position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;background:rgba(7,11,20,0.92);border:1px solid rgba(16,185,129,0.6);border-radius:999px;padding:2px 8px;font-size:0.72rem;font-weight:700;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.6);pointer-events:none}
+.live-train-tag .ontime{color:#10b981}
+.live-train-tag .late{color:#f59e0b}
+
+/* MapLibre Popup for Live Train */
+.maplibregl-popup-content{background:rgba(15,23,42,0.95) !important;color:#f8fafc !important;border:1px solid rgba(94,234,212,0.3) !important;border-radius:12px !important;padding:12px 14px !important;box-shadow:0 12px 36px rgba(0,0,0,0.7) !important}
+.maplibregl-popup-close-button{color:#94a3b8 !important;padding:4px 8px !important;font-size:16px !important}
+.live-popup-card{font-family:var(--display),system-ui,sans-serif;min-width:210px}
+
+/* Live Running Status HUD Panel */
+.live-hud{position:absolute;top:72px;right:14px;width:300px;max-width:calc(100vw - 28px);z-index:5;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.live-hud-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.live-pulse-badge{display:flex;align-items:center;gap:6px;font-family:var(--display),system-ui,sans-serif;font-size:0.75rem;font-weight:800;letter-spacing:0.06em;color:#10b981}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 10px #10b981;animation:pulseDot 1.4s infinite}
+@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
+.live-hud-actions{display:flex;align-items:center;gap:6px}
+.live-action-btn{border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:var(--ink);border-radius:999px;padding:4px 10px;font-size:0.75rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s ease}
+.live-action-btn:hover{background:rgba(255,255,255,0.18);border-color:rgba(255,255,255,0.3)}
+.live-action-btn.spinning{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.live-hud-main{display:flex;flex-direction:column;gap:8px}
+.live-status-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.live-train-no{font-family:var(--display),system-ui,sans-serif;font-size:1.05rem;font-weight:800;color:var(--ink)}
+.live-delay-pill{font-size:0.74rem;font-weight:700;padding:2px 8px;border-radius:999px}
+.live-delay-pill.ontime{background:rgba(16,185,129,0.2);color:#10b981;border:1px solid rgba(16,185,129,0.4)}
+.live-delay-pill.late{background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4)}
+.live-location-desc{font-size:0.84rem;color:#cbd5e1;line-height:1.35}
+.live-next-halt{display:flex;align-items:flex-start;gap:6px;font-size:0.82rem;color:var(--teal);background:rgba(94,234,212,0.08);border:1px solid rgba(94,234,212,0.2);border-radius:8px;padding:6px 10px}
+.live-next-halt .arrow{font-weight:900}
+.live-progress-wrap{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.live-progress-bar{height:6px;background:rgba(255,255,255,0.12);border-radius:999px;overflow:hidden}
+.live-progress-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--amber));border-radius:999px;transition:width 0.4s ease}
+.live-progress-label{display:flex;justify-content:space-between;font-size:0.72rem;color:#94a3b8}
+
+/* Mini Tag for Stops list */
+.live-tag-mini{background:rgba(16,185,129,0.2);color:#10b981;border:1px solid rgba(16,185,129,0.4);border-radius:4px;padding:1px 5px;font-size:0.65rem;font-weight:800;margin-left:auto}
+.stop-chip.departed{opacity:0.55;background:rgba(255,255,255,0.02)}
+.stop-chip.departed .stop-num{background:rgba(16,185,129,0.2);color:#10b981}
+.stop-chip.next-halt-chip{border-color:#10b981;background:rgba(16,185,129,0.16);box-shadow:0 0 10px rgba(16,185,129,0.3)}
+.stop-chip.next-halt-chip .stop-num{background:#10b981;color:#fff}
+
+@media(max-width:700px){
+  .live-hud{right:10px;left:10px;top:66px;width:auto}
+}
