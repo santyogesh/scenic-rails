@@ -23,20 +23,41 @@ export default function Home() {
   async function go(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setMsg("Starting…");
     try {
-      const t = q.trim(); let list: string[];
+      const t = q.trim();
+      let line: LL[] = [];
+      let title = "";
+      let bad = 0;
       if (/^\d{4,6}$/.test(t)) {
-        setMsg("Looking up train " + t + "…");
+        setMsg("Looking up train " + t + " on RailRadar…");
         const r = await fetch("/api/train?no=" + t, { signal: AbortSignal.timeout(20000) }), j = await r.json();
-        if (!r.ok) throw new Error(j.error); list = j.stops;
-      } else list = t.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
-      setMsg("Locating stations…");
-      const at = await pool(list, 4, geocode);
-      const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
-      if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
-      const { line, bad } = await buildTrack(stops, setMsg);
+        if (!r.ok) throw new Error(j.error);
+        if (Array.isArray(j.line) && j.line.length >= 2) {
+          line = j.line;
+          title = j.title || `${j.stops[0]} to ${j.stops[j.stops.length - 1]}`;
+        } else {
+          const list: string[] = j.stops;
+          const at = await pool(list, 4, geocode);
+          const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+          if (stops.length < 2) throw new Error("Could not locate those stations.");
+          const built = await buildTrack(stops, setMsg);
+          line = built.line;
+          bad = built.bad;
+          title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
+        }
+      } else {
+        const list = t.split(",").map((s) => s.trim()).filter(Boolean);
+        if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
+        setMsg("Locating stations on RailRadar…");
+        const at = await pool(list, 4, geocode);
+        const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+        if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
+        const built = await buildTrack(stops, setMsg);
+        line = built.line;
+        bad = built.bad;
+        title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
+      }
       const sights = await findSights(line, setMsg);
-      setRes({ line, sights, title: `${stops[0].name} to ${stops[stops.length - 1].name}` });
+      setRes({ line, sights, title });
       setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
     } catch (err) {
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");

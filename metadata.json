@@ -1,0 +1,8 @@
+{
+  "name": "Scenic Rails",
+  "description": "Train routes mapped with the sights worth looking up for.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

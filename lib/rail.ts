@@ -1,8 +1,7 @@
-import { Graph, hav, LL } from "./geo";
+import { hav, LL } from "./geo";
 
 export type Sight = { name: string; at: LL; text: string; img?: string; url?: string };
 export type Stop = { name: string; at: LL };
-const OP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
 
 // Every network call has a timeout so the UI can never hang.
 async function tfetch(u: string, init: RequestInit = {}, ms = 15000) {
@@ -14,45 +13,32 @@ export async function pool<T, R>(items: T[], n: number, fn: (x: T, i: number) =>
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (k < items.length) { const i = k++; out[i] = await fn(items[i], i); } }));
   return out;
 }
-async function overpass(q: string) {
-  for (let t = 0; t < 4; t++) {
-    try {
-      const r = await tfetch(OP[t % 2], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) }, 45000);
-      if (r.ok) return r.json();
-    } catch {}
-    await new Promise((r) => setTimeout(r, 1500 * (t + 1)));
-  }
-  throw new Error("The OpenStreetMap track server is busy. Try again in a minute.");
-}
+
 export async function geocode(name: string): Promise<LL | null> {
   try {
-    const r = await tfetch(`https://photon.komoot.io/api/?limit=1&osm_tag=railway:station&q=${encodeURIComponent(name)}`, {}, 10000);
-    return (await r.json()).features?.[0]?.geometry?.coordinates ?? null;
+    const r = await tfetch(`/api/train?station=${encodeURIComponent(name)}`, {}, 10000);
+    if (!r.ok) return null;
+    return (await r.json()).stop?.at ?? null;
   } catch { return null; }
 }
 
-// Real OSM rail ways, then shortest path along the rails between consecutive stops.
+// Fetch RailRadar GIS rail track geometry between consecutive stops.
 export async function buildTrack(stops: Stop[], say: (s: string) => void) {
-  const g = new Graph(), chunks: Stop[][] = [];
-  for (let i = 0; i < stops.length - 1; i += 6) chunks.push(stops.slice(i, i + 7));
-  let done = 0;
-  await pool(chunks, 2, async (c) => {
-    const leg = Math.max(...c.slice(1).map((s, i) => hav(s.at, c[i].at)));
-    const rad = Math.round(Math.max(3000, Math.min(15000, leg * 60)));
-    const around = c.map((s) => `${s.at[1]},${s.at[0]}`).join(",");
-    const j = await overpass(`[out:json][timeout:40];way["railway"~"^(rail|narrow_gauge)$"][!"service"](around:${rad},${around});out geom;`);
-    j.elements.forEach((w: any) => g.addWay(w));
-    say(`Downloading rail tracks ${++done}/${chunks.length}`);
+  const legs = stops.slice(0, -1).map((s, i) => [s, stops[i + 1]] as const);
+  let done = 0, bad = 0;
+  const segments = await pool(legs, 3, async ([a, b]) => {
+    try {
+      const r = await tfetch(`/api/train?from=${encodeURIComponent(a.name)}&to=${encodeURIComponent(b.name)}`, {}, 15000);
+      const j = r.ok ? await r.json() : null;
+      say(`Downloading RailRadar tracks ${++done}/${legs.length}`);
+      if (Array.isArray(j?.line) && j.line.length >= 2) return j.line as LL[];
+    } catch {
+      say(`Downloading RailRadar tracks ${++done}/${legs.length}`);
+    }
+    bad++;
+    return [a.at, b.at] as LL[];
   });
-  const line: LL[] = []; let bad = 0;
-  for (let i = 0; i < stops.length - 1; i++) {
-    const a = g.nearest(stops[i].at), b = g.nearest(stops[i + 1].at);
-    let p: LL[] | null = null;
-    if (a >= 0 && b >= 0 && hav(g.pts[a], stops[i].at) < 3 && hav(g.pts[b], stops[i + 1].at) < 3) p = g.path(a, b);
-    if (!p) { bad++; p = [stops[i].at, stops[i + 1].at]; }
-    line.push(...p);
-  }
-  return { line, bad };
+  return { line: segments.flat(), bad };
 }
 
 const GOOD = /waterfall|lake|fort|hill|valley|beach|bridge|viaduct|tunnel|river|ghat|pass\b|national park|sanctuary|wildlife|mountain|peak|glacier|gorge|canyon|coast|island|reservoir|dam\b|lagoon|forest|cave|temple|palace|cliff|lighthouse/i;
