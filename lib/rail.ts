@@ -15,12 +15,13 @@ export async function pool<T, R>(items: T[], n: number, fn: (x: T, i: number) =>
   return out;
 }
 async function overpass(q: string) {
-  for (let t = 0; t < 2; t++) {
+  // Track data is an enhancement: a slow Overpass tile must never block the route.
+  for (let t = 0; t < OP.length; t++) {
     try {
-      const r = await tfetch(OP[t % 2], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) }, 18000);
+      const r = await tfetch(OP[t], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) }, 9000);
       if (r.ok) return r.json();
     } catch {}
-    if (t === 0) await new Promise((r) => setTimeout(r, 700));
+    if (t < OP.length - 1) await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return { elements: [] };
 }
@@ -48,13 +49,18 @@ export async function buildTrack(stops: Stop[], say: (s: string) => void) {
   const g = new Graph(), chunks: Stop[][] = [];
   for (let i = 0; i < stops.length - 1; i += 6) chunks.push(stops.slice(i, i + 7));
   let done = 0;
-  await pool(chunks, 2, async (c) => {
-    const leg = Math.max(...c.slice(1).map((s, i) => hav(s.at, c[i].at)));
-    const rad = Math.round(Math.max(3000, Math.min(15000, leg * 60)));
-    const around = c.map((s) => `${s.at[1]},${s.at[0]}`).join(",");
-    const j = await overpass(`[out:json][timeout:40];way["railway"~"^(rail|narrow_gauge)$"][!"service"](around:${rad},${around});out geom;`);
-    j.elements.forEach((w: any) => g.addWay(w));
-    say(`Downloading rail tracks ${++done}/${chunks.length}`);
+  await pool(chunks, 4, async (c) => {
+    try {
+      const leg = Math.max(...c.slice(1).map((s, i) => hav(s.at, c[i].at)));
+      const rad = Math.round(Math.max(3000, Math.min(12000, leg * 60)));
+      const around = c.map((s) => `${s.at[1]},${s.at[0]}`).join(",");
+      const j = await overpass(`[out:json][timeout:12];way["railway"~"^(rail|narrow_gauge)$"][!"service"](around:${rad},${around});out geom;`);
+      for (const w of j.elements ?? []) g.addWay(w);
+    } catch {
+      // The straight-line fallback below still gives the user a usable route.
+    } finally {
+      say(`Downloading rail tracks ${++done}/${chunks.length}`);
+    }
   });
   const line: LL[] = []; let bad = 0;
   for (let i = 0; i < stops.length - 1; i++) {
