@@ -2,9 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import Journey from "@/components/Journey";
-import { geocode, buildTrack, findSights, pool, Stop } from "@/lib/rail";
+import { geocodeStop, buildTrack, findSights, pool, Stop } from "@/lib/rail";
 import type { Route } from "@/data/routes";
-
 import type { LL } from "@/lib/geo";
 
 export default function Plan() {
@@ -14,6 +13,7 @@ export default function Plan() {
     try {
       const list = names.split(",").map((s) => s.trim()).filter(Boolean);
       let line: LL[] = [];
+      let stops: Stop[] = [];
       let routeName = "Your route";
       let place = "";
       let distance = "";
@@ -24,6 +24,9 @@ export default function Plan() {
         setMsg("Looking up train " + no + " on RailRadar");
         const r = await fetch("/api/train?no=" + encodeURIComponent(no)), j = await r.json();
         if (!r.ok) throw new Error(j.error);
+        if (Array.isArray(j.stationStops) && j.stationStops.length >= 2) {
+          stops = j.stationStops;
+        }
         if (Array.isArray(j.line) && j.line.length >= 2) {
           line = j.line;
           routeName = j.title || `Train ${no}`;
@@ -32,8 +35,8 @@ export default function Plan() {
           duration = j.duration || "";
         } else {
           setMsg("Locating stations on RailRadar");
-          const at = await pool(j.stops as string[], 4, geocode);
-          const stops: Stop[] = (j.stops as string[]).flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+          const found = await pool(j.stops as string[], 4, geocodeStop);
+          stops = found.filter((s): s is Stop => Boolean(s));
           if (stops.length < 2) throw new Error("Could not locate enough stations on the map.");
           const built = await buildTrack(stops, setMsg);
           line = built.line;
@@ -43,19 +46,24 @@ export default function Plan() {
         }
       } else {
         setMsg("Locating stations on RailRadar");
-        const at = await pool(list, 4, geocode);
-        const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+        const found = await pool(list, 4, geocodeStop);
+        stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate enough stations on the map.");
         const built = await buildTrack(stops, setMsg);
         line = built.line;
         bad = built.bad;
         place = `${stops[0].name} to ${stops[stops.length - 1].name}`;
       }
-      const sights = await findSights(line, setMsg);
-      setRoute({ slug: "plan", name: routeName, place, distance, duration, blurb: "", line, sights });
+      setRoute({ slug: "plan", name: routeName, place, distance, duration, blurb: "", line, stops, sights: [] });
+      setBusy(false);
       setMsg(bad ? `${bad} stretch(es) are drawn straight because track data was missing.` : "");
-    } catch (err) { setMsg(err instanceof Error ? err.message : "Something went wrong."); }
-    setBusy(false);
+      findSights(line, () => {}).then((sights) => {
+        setRoute((prev) => (prev ? { ...prev, sights } : prev));
+      }).catch(() => {});
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Something went wrong.");
+      setBusy(false);
+    }
   }
   return (
     <main className="page">
