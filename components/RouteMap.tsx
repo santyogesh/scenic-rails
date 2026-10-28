@@ -5,6 +5,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { hav, LL } from "@/lib/geo";
 import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
 import type { Route } from "@/data/routes";
+import { mascotTransform, TRAIN_MASCOT_SVG } from "./TrainMascot";
 
 export type RouteMapProps = {
   line?: LL[];
@@ -17,6 +18,11 @@ export type RouteMapProps = {
   liveStatus?: LiveTrainStatus | null;
   trainNumber?: string;
   onRefreshLive?: () => void;
+  /** Direction of travel at the live train position, degrees from north. */
+  liveBearing?: number;
+  /** Called with km travelled during "Ride the route", and null when the ride ends. */
+  onRideProgress?: (km: number | null) => void;
+  focusAt?: LL | null;
 };
 
 export default function RouteMap({
@@ -30,6 +36,9 @@ export default function RouteMap({
   liveStatus,
   trainNumber,
   onRefreshLive,
+  liveBearing,
+  onRideProgress,
+  focusAt,
 }: RouteMapProps) {
   const rawLine = propLine ?? route?.line ?? [];
   const line = useMemo(() => {
@@ -158,6 +167,7 @@ export default function RouteMap({
       clearTimeout(resizeTimer);
       cancelAnimationFrame(animRaf.current);
       cancelAnimationFrame(raf.current);
+      setRiding(false);
       stopMarkers.current.forEach((mk) => mk.remove());
       stopMarkers.current = [];
       sightMarkers.current.forEach((mk) => mk.remove());
@@ -250,12 +260,8 @@ export default function RouteMap({
       radar.className = "live-radar-pulse";
 
       const badge = document.createElement("div");
-      badge.className = "live-train-badge";
-      badge.innerHTML = `
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-          <path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h12v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-4-4-8-4zm0 2c3.51 0 6 .34 6 2v2H6V6c0-1.66 2.49-2 6-2zm-6 6h12v5.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V10zm2 8c-.83 0-1.5-.67-1.5-1.5S7.17 15 8 15s1.5.67 1.5 1.5S8.83 18 8 18zm8 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-        </svg>
-      `;
+      badge.className = "live-loco";
+      badge.innerHTML = TRAIN_MASCOT_SVG;
 
       const tag = document.createElement("div");
       tag.className = "live-train-tag";
@@ -301,6 +307,25 @@ export default function RouteMap({
     }
   }, [liveStatus]);
 
+  // Keep the locomotive pointing along the track, even when the map is rotated.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || liveBearing === undefined) return;
+    const orient = () => {
+      const loco = liveMarker.current?.getElement().querySelector<HTMLElement>(".live-loco");
+      if (loco) loco.style.transform = mascotTransform(liveBearing, m.getBearing());
+    };
+    orient();
+    m.on("rotate", orient);
+    return () => {
+      m.off("rotate", orient);
+    };
+  }, [liveBearing, liveStatus]);
+
+  useEffect(() => {
+    if (focusAt && map.current) map.current.flyTo({ center: focusAt, zoom: 12, speed: 1.3 });
+  }, [focusAt]);
+
   // 4. Plot scenic sights on the map
   useEffect(() => {
     const m = map.current;
@@ -311,7 +336,7 @@ export default function RouteMap({
     sights.forEach((s, idx) => {
       const el = document.createElement("button");
       el.type = "button";
-      el.className = "pin";
+      el.className = "side" in s ? `pin ${(s as { crossing?: boolean }).crossing ? "crossing" : s.side}` : "pin";
       el.title = s.name;
       el.setAttribute("aria-label", s.name);
       el.onclick = (e) => {
@@ -354,6 +379,7 @@ export default function RouteMap({
     if (riding) {
       cancelAnimationFrame(raf.current);
       setRiding(false);
+      onRideProgress?.(null);
       return;
     }
     setRiding(true);
@@ -369,6 +395,7 @@ export default function RouteMap({
     const dur = Math.min(90000, Math.max(25000, total * 60)),
       t0 = performance.now();
     let k = 0;
+    let lastReport = 0;
     const at = (d: number): LL => {
       while (k < cum.length - 2 && cum[k + 1] < d) k++;
       const span = cum[k + 1] - cum[k] || 1;
@@ -382,8 +409,15 @@ export default function RouteMap({
         p = at(d),
         q = at(Math.min(d + Math.max(2, total / 80), total));
       m.jumpTo({ center: p, bearing: (Math.atan2(q[0] - p[0], q[1] - p[1]) * 180) / Math.PI, pitch: 60, zoom: 11 });
+      if (now - lastReport > 250) {
+        lastReport = now;
+        onRideProgress?.(d);
+      }
       if (d < total) raf.current = requestAnimationFrame(step);
-      else setRiding(false);
+      else {
+        setRiding(false);
+        onRideProgress?.(null);
+      }
     };
     raf.current = requestAnimationFrame(step);
   };
