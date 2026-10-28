@@ -2,6 +2,7 @@ import type { LL } from "@/lib/geo";
 import { hav } from "@/lib/geo";
 import { locate, makeTrack, thin, Track } from "@/lib/side";
 import { kindFromText, WindowItem, WindowKind } from "@/lib/window";
+import { wikiWindow } from "@/lib/wikiWindow";
 
 export const maxDuration = 60;
 
@@ -185,55 +186,9 @@ out center tags;`;
 /* ---------------- Wikipedia ---------------- */
 
 async function fromWikipedia(track: Track, out: Cand[], deadline: number) {
-  const step = Math.max(9, track.total / 140);
-  const seen = new Map<number, { title: string; at: LL }>();
-  await pool(samples(track, step), 8, async (p) => {
-    const u = `${WIKI}?action=query&format=json&list=geosearch&gscoord=${p[1]}|${p[0]}&gsradius=${Math.min(10000, Math.round(step * 1000 * 0.75 + 1500))}&gslimit=100`;
-    const j = await (await tfetch(u, {}, 10000)).json();
-    for (const g of j?.query?.geosearch ?? []) {
-      if (seen.has(g.pageid)) continue;
-      const at: LL = [g.lon, g.lat];
-      const loc = locate(track, at);
-      if (loc && loc.offsetKm <= MAX_OFFSET_KM) seen.set(g.pageid, { title: g.title, at });
-    }
-  }, deadline);
-
-  // Classify cheaply with short descriptions, then fetch summaries only for the keepers.
-  const ids = [...seen.keys()];
-  const keep: { id: number; kind: WindowKind }[] = [];
-  const batches: number[][] = [];
-  for (let i = 0; i < ids.length; i += 50) batches.push(ids.slice(i, i + 50));
-  await pool(batches, 6, async (b) => {
-    const j = await (await tfetch(`${WIKI}?action=query&format=json&prop=description&pageids=${b.join("|")}`, {}, 10000)).json();
-    for (const pg of Object.values(j?.query?.pages ?? {}) as any[]) {
-      const kind = kindFromText(`${pg.title} ${pg.description ?? ""}`);
-      if (kind) keep.push({ id: pg.pageid, kind });
-    }
-  }, deadline);
-
-  const kindOf = new Map(keep.map((k) => [k.id, k.kind]));
-  const kb: number[][] = [];
-  for (let i = 0; i < keep.length && i < 400; i += 20) kb.push(keep.slice(i, i + 20).map((k) => k.id));
-  await pool(kb, 6, async (b) => {
-    const u = `${WIKI}?action=query&format=json&prop=extracts|pageimages&exintro=1&explaintext=1&exsentences=2&exlimit=20&piprop=thumbnail&pithumbsize=600&pageids=${b.join("|")}`;
-    const j = await (await tfetch(u, {}, 10000)).json();
-    for (const pg of Object.values(j?.query?.pages ?? {}) as any[]) {
-      const s = seen.get(pg.pageid);
-      const kind = kindOf.get(pg.pageid);
-      if (!s || !kind || !pg.extract) continue;
-      out.push({
-        key: `wiki:${pg.pageid}`,
-        pageid: pg.pageid,
-        name: pg.title,
-        kind,
-        at: s.at,
-        text: pg.extract,
-        img: pg.thumbnail?.source,
-        url: `https://en.wikipedia.org/?curid=${pg.pageid}`,
-        source: "wikipedia",
-      });
-    }
-  }, deadline);
+  for (const it of await wikiWindow(track, deadline, { "User-Agent": UA })) {
+    out.push({ key: it.id, pageid: Number(it.id.slice(5)), name: it.name, kind: it.kind, at: it.at, text: it.text, img: it.img, url: it.url, source: "wikipedia" });
+  }
 }
 
 /** Fill in Wikipedia summaries for OSM features tagged with an English Wikipedia article. */
@@ -241,7 +196,7 @@ async function enrichFromWikipedia(items: Cand[], deadline: number) {
   const need = items.filter((c) => c.wiki && c.source === "osm");
   const batches: Cand[][] = [];
   for (let i = 0; i < need.length && i < 200; i += 20) batches.push(need.slice(i, i + 20));
-  await pool(batches, 4, async (b) => {
+  await pool(batches, 2, async (b) => {
     const titles = b.map((c) => c.wiki!).join("|");
     const u = `${WIKI}?action=query&format=json&redirects=1&prop=extracts|pageimages&exintro=1&explaintext=1&exsentences=2&exlimit=20&piprop=thumbnail&pithumbsize=600&titles=${encodeURIComponent(titles)}`;
     const j = await (await tfetch(u, {}, 8000)).json();

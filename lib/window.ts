@@ -29,6 +29,7 @@ export const KIND_LABEL: Record<WindowKind, string> = {
 /** Guess a landmark kind from free text (title + description). Returns null if it isn't worth showing. */
 export function kindFromText(s: string): WindowKind | null {
   const t = s.toLowerCase();
+  if (/\b(bombings?|attacks?|riots?|massacre|election|municipal corporation|crash|accident|disaster|incident|stampede|list of)\b/.test(t)) return null;
   if (/\b((?<!hill )station|metro|village|school|college|university|hospital|constituency|neighbourhood|suburb|locality|company|census town|ward|road|airport|district of|tehsil|mandal|taluka|block|exchange|building|hotel|mall|stadium|cinema|office|bank|studio|industrial|hall|club|court)\b/.test(t) && !/\b(fort|temple|lake|river|waterfall|sanctuary|national park|dam)\b/.test(t)) return null;
   if (/\bwaterfalls?\b|\bfalls\b/.test(t)) return "waterfall";
   if (/\b(river|tributary)\b/.test(t)) return "river";
