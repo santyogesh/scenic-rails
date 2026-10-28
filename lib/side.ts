@@ -69,6 +69,17 @@ export function bearing(a: LL, b: LL): number {
   return ((Math.atan2((b[0] - a[0]) * cosLat, b[1] - a[1]) * 180) / Math.PI + 360) % 360;
 }
 
+export type Relative = { distKm: number; rel: number; side: Side; ahead: boolean };
+
+/** Where a point is as seen from the train: straight-line distance, and side/ahead relative to its heading. */
+export function relativeTo(trainAt: LL, heading: number, p: LL): Relative {
+  const rel = ((((bearing(trainAt, p) - heading) % 360) + 540) % 360) - 180;
+  return { distKm: hav(trainAt, p), rel, side: rel < 0 ? "left" : "right", ahead: Math.abs(rel) < 90 };
+}
+
+const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+export const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+
 /** Keep roughly one vertex per `stepKm`, always retaining the endpoints. */
 export function thin(line: LL[], stepKm: number): LL[] {
   if (line.length < 3) return line;

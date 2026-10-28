@@ -68,12 +68,12 @@ form button:disabled{opacity:.5}
 @media(max-width:768px){.journey{flex-direction:column-reverse}.sights{width:100%;max-width:100%;height:45vh;border-left:0;border-top:1px solid rgba(255,255,255,.1)}}
 
 /* Live Running Train Visualisation & Radar Marker */
-.live-train-marker{position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10}
-.live-radar-pulse{position:absolute;inset:-8px;border-radius:50%;background:rgba(16,185,129,0.3);border:2px solid #10b981;animation:radarPulse 2s ease-out infinite;pointer-events:none}
+.live-train-marker{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10}
+.live-radar-pulse{position:absolute;inset:-4px;border-radius:50%;background:rgba(16,185,129,0.25);border:1px solid #10b981;animation:radarPulse 2s ease-out infinite;pointer-events:none}
 @keyframes radarPulse{0%{transform:scale(0.6);opacity:1}100%{transform:scale(2.2);opacity:0}}
 .live-train-badge{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#059669,#10b981);color:#fff;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 0 16px rgba(16,185,129,0.9),0 4px 10px rgba(0,0,0,0.5);position:relative;z-index:2;transition:transform .2s ease}
 .live-train-marker:hover .live-train-badge{transform:scale(1.12)}
-.live-train-tag{position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;background:rgba(7,11,20,0.92);border:1px solid rgba(16,185,129,0.6);border-radius:999px;padding:2px 8px;font-size:0.72rem;font-weight:700;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.6);pointer-events:none}
+.live-train-tag{position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;background:rgba(7,11,20,0.92);border:1px solid rgba(16,185,129,0.6);border-radius:999px;padding:1px 6px;font-size:0.62rem;font-weight:700;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.6);pointer-events:none}
 .live-train-tag .ontime{color:#10b981}
 .live-train-tag .late{color:#f59e0b}
 
@@ -167,15 +167,25 @@ form button:disabled{opacity:.5}
 .win-row-body{display:flex;flex-direction:column;min-width:0}
 .win-row-body strong{font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .win-row-body small{font-size:.7rem;color:#9fb0c6}
-.pin.left{background:var(--teal);animation:none;width:16px;height:16px;border-width:2px}
-.pin.right{background:var(--amber);animation:none;width:16px;height:16px;border-width:2px}
-.pin.crossing{background:#60a5fa;animation:none;width:16px;height:16px;border-width:2px}
+.pin.left{background:var(--teal);animation:none;width:10px;height:10px;border-width:1.5px}
+.pin.right{background:var(--amber);animation:none;width:10px;height:10px;border-width:1.5px}
+.pin.crossing{background:#60a5fa;animation:none;width:10px;height:10px;border-width:1.5px}
 @media(max-width:700px){
   .win,.win.with-hud{left:10px;right:10px;width:auto;top:auto;bottom:196px;height:auto;max-height:38vh;min-height:0}
   .win.closed{bottom:196px}
   .win-card img{display:none}
 }
-.live-loco{position:relative;z-index:2;width:72px;height:30px;display:flex;align-items:center;justify-content:center;transition:transform .5s ease;filter:drop-shadow(0 0 6px rgba(16,185,129,.9)) drop-shadow(0 3px 4px rgba(0,0,0,.6))}
+.live-loco{position:relative;z-index:2;width:40px;height:17px;display:flex;align-items:center;justify-content:center;transition:transform .5s ease;filter:drop-shadow(0 0 6px rgba(16,185,129,.9)) drop-shadow(0 3px 4px rgba(0,0,0,.6))}
 .live-loco svg{display:block}
 .live-train-marker:hover .live-loco svg{transform:scale(1.1)}
 .win-modal-side{color:var(--teal);font-family:var(--display),system-ui,sans-serif;font-size:.85rem;font-weight:700}
+.win-coords{margin:-4px 0 0;font-size:.72rem;color:#9fb0c6;font-variant-numeric:tabular-nums}
+.win-note{margin:0;font-size:.7rem;color:#64748b}
+.start-date{display:flex;align-items:center;gap:6px;margin-right:6px;padding:0 4px 0 12px;border-left:1px solid rgba(255,255,255,.14);font-family:var(--display),system-ui,sans-serif;font-size:.78rem;color:#9fb0c6;white-space:nowrap}
+.start-date select{appearance:none;background:rgba(255,255,255,.08);color:var(--ink);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:7px 12px;font:inherit;font-weight:700;cursor:pointer}
+.start-date select option{color:#0f172a}
+@media(max-width:600px){
+  form:has(.start-date){flex-wrap:wrap;border-radius:24px}
+  form:has(.start-date) input{flex-basis:calc(100% - 90px)}
+  .start-date{order:3;width:100%;border-left:0;border-top:1px solid rgba(255,255,255,.1);padding:8px 12px 4px;margin:0}
+}

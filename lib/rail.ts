@@ -32,6 +32,8 @@ export type LiveTrainStatus = {
     delayMinutes?: number;
     speedKmh?: number;
     segmentProgress?: number;
+    /** Direction of travel, degrees clockwise from north. */
+    bearing?: number;
   };
   previousHalt?: {
     stationName?: string;
