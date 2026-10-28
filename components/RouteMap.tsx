@@ -5,7 +5,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { hav, LL } from "@/lib/geo";
 import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
 import type { Route } from "@/data/routes";
-import { mascotTransform, TRAIN_MASCOT_SVG } from "./TrainMascot";
+import { headingTransform, TRAIN_MASCOT_SVG } from "./TrainMascot";
 
 export type RouteMapProps = {
   line?: LL[];
@@ -63,6 +63,8 @@ export default function RouteMap({
   const [riding, setRiding] = useState(false);
   const [activeStopIdx, setActiveStopIdx] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hudOpen, setHudOpen] = useState(false);
+  const [stopsOpen, setStopsOpen] = useState(false);
 
   // 1. Initialize OpenStreetMap map & draw rail track
   useEffect(() => {
@@ -259,6 +261,10 @@ export default function RouteMap({
       const radar = document.createElement("div");
       radar.className = "live-radar-pulse";
 
+      const heading = document.createElement("div");
+      heading.className = "live-heading";
+      heading.innerHTML = "<i></i>";
+
       const badge = document.createElement("div");
       badge.className = "live-loco";
       badge.innerHTML = TRAIN_MASCOT_SVG;
@@ -266,9 +272,10 @@ export default function RouteMap({
       const tag = document.createElement("div");
       tag.className = "live-train-tag";
       const isLate = (liveStatus.delayMinutes || 0) > 0;
-      tag.innerHTML = `<span>🚆 ${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
+      tag.innerHTML = `<span>${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
 
       wrap.appendChild(radar);
+      wrap.appendChild(heading);
       wrap.appendChild(badge);
       wrap.appendChild(tag);
 
@@ -302,18 +309,24 @@ export default function RouteMap({
       const tag = liveMarker.current.getElement().querySelector(".live-train-tag");
       if (tag) {
         const isLate = (liveStatus.delayMinutes || 0) > 0;
-        tag.innerHTML = `<span>🚆 ${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
+        tag.innerHTML = `<span>${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
       }
     }
+    liveMarker.current
+      .getElement()
+      .classList.toggle("moving", liveStatus.status === "running" && (liveStatus.currentLocation.speedKmh ?? 0) > 0);
   }, [liveStatus]);
 
-  // Keep the locomotive pointing along the track, even when the map is rotated.
+  // Keep the heading arrow pointing along the track, even when the map is rotated.
   useEffect(() => {
     const m = map.current;
     if (!m || liveBearing === undefined) return;
     const orient = () => {
-      const loco = liveMarker.current?.getElement().querySelector<HTMLElement>(".live-loco");
-      if (loco) loco.style.transform = mascotTransform(liveBearing, m.getBearing());
+      const arrow = liveMarker.current?.getElement().querySelector<HTMLElement>(".live-heading");
+      if (arrow) {
+        arrow.style.transform = headingTransform(liveBearing, m.getBearing());
+        arrow.style.opacity = "1";
+      }
     };
     orient();
     m.on("rotate", orient);
@@ -438,12 +451,13 @@ export default function RouteMap({
 
       {/* Live Train Running HUD Overlay */}
       {liveStatus && (
-        <div className="live-hud glass" aria-label="Live Train Running Status">
+        <div className={`live-hud glass ${hudOpen ? "" : "closed"}`} aria-label="Live Train Running Status">
           <div className="live-hud-top">
-            <div className="live-pulse-badge">
+            <button type="button" className="live-pulse-badge" onClick={() => setHudOpen((o) => !o)} aria-expanded={hudOpen}>
               <span className="live-dot" />
-              <span>LIVE RUNNING STATUS</span>
-            </div>
+              <span>{hudOpen ? "LIVE STATUS" : `${liveStatus.trainNumber} · ${isLate ? `+${liveStatus.delayMinutes}m` : "On time"}`}</span>
+              <span className="chev">{hudOpen ? "▾" : "▸"}</span>
+            </button>
             <div className="live-hud-actions">
               <button
                 type="button"
@@ -467,6 +481,7 @@ export default function RouteMap({
             </div>
           </div>
 
+          {hudOpen && (
           <div className="live-hud-main">
             <div className="live-status-row">
               <span className="live-train-no">🚆 {liveStatus.trainNumber}</span>
@@ -515,15 +530,17 @@ export default function RouteMap({
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
       {stops.length > 0 && (
-        <div className="stops-strip glass" aria-label="Train stops">
-          <div className="stops-strip-title">
+        <div className={`stops-strip glass ${stopsOpen ? "" : "closed"}`} aria-label="Train stops">
+          <button type="button" className="stops-strip-title" onClick={() => setStopsOpen((o) => !o)} aria-expanded={stopsOpen}>
             <span>Stops ({stops.length})</span>
-            {liveStatus && <span className="live-tag-mini">LIVE</span>}
-          </div>
+            <span className="chev">{stopsOpen ? "▾" : "▸"}</span>
+          </button>
+          {stopsOpen && (
           <div className="stops-list">
             {stops.map((st, idx) => (
               <button
@@ -540,6 +557,7 @@ export default function RouteMap({
               </button>
             ))}
           </div>
+          )}
         </div>
       )}
 
