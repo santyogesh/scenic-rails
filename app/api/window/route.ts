@@ -334,6 +334,7 @@ export async function POST(req: Request) {
     ? body.line.filter((p: any) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
     : [];
   if (raw.length < 2) return Response.json({ error: "Need a track line with at least two points." }, { status: 400 });
+  if (raw.length > 20000) return Response.json({ error: "Track line is too long." }, { status: 413 });
 
   const all = ["wikipedia", "osm", "bharatlas"];
   const want = new Set<string>(Array.isArray(body?.sources) ? body.sources.filter((s: unknown) => all.includes(s as string)) : all);
