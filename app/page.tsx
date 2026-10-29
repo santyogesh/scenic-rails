@@ -355,7 +355,7 @@ export default function Home() {
     <main className="hero">
       <Globe />
       <div className="center">
-        <h1>Rail<br />Vista</h1>
+        <h1>Scenic<br />Rails</h1>
         <form onSubmit={go} className="glass">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Train no. or stations, e.g. 12951" aria-label="Train number or stations" enterKeyHint="go" autoComplete="off" />
           {/^\d{4,6}$/.test(q.trim()) && dates.length > 0 && (
