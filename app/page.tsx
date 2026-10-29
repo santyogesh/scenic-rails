@@ -7,6 +7,9 @@ import { locate, makeTrack, orientLine, pointAt } from "@/lib/side";
 import { mergeItems, sideText, WindowItem } from "@/lib/window";
 import { wikiSummary, wikiWindow } from "@/lib/wikiWindow";
 import WindowPanel from "@/components/WindowPanel";
+import PlaceToast from "@/components/PlaceToast";
+import SideSheet, { sheetRows } from "@/components/SideSheet";
+import type { Side } from "@/lib/side";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
@@ -19,6 +22,16 @@ type Result = {
   trainNumber?: string;
   startDate?: string;
 };
+
+const QUICK_TRAINS = [
+  { no: "12951", label: "Mumbai → Delhi Rajdhani" },
+  { no: "12952", label: "Delhi → Mumbai Rajdhani" },
+  { no: "12301", label: "Howrah → Delhi Rajdhani" },
+  { no: "12002", label: "Delhi → Bhopal Shatabdi" },
+  { no: "20901", label: "Mumbai → Gandhinagar Vande Bharat" },
+];
+const LAST_KEY = "scenic:last";
+const LAST_MAX_AGE_MS = 12 * 3600000;
 
 /** Today and the 4 previous days in IST, as journey start dates. */
 function startDates(): { value: string; label: string }[] {
@@ -37,6 +50,49 @@ export default function Home() {
   const [winLoading, setWinLoading] = useState(false), [rideKm, setRideKm] = useState<number | null>(null), [manualKm, setManualKm] = useState(0);
   const [focusAt, setFocusAt] = useState<LL | null>(null), [summary, setSummary] = useState<string | null>(null);
   const winReq = useRef(0);
+  const [sheet, setSheet] = useState<Side | null>(null);
+  const [keepAwake, setKeepAwake] = useState(true), [liveOkAt, setLiveOkAt] = useState(0), [liveFailing, setLiveFailing] = useState(false);
+  const [, setTick] = useState(0);
+
+  // Bring back the last journey after a reload or a dropped connection.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
+      if (saved?.res?.line?.length >= 2 && Date.now() - saved.at < LAST_MAX_AGE_MS) {
+        setRes(saved.res);
+        setLiveOkAt(saved.at);
+        if (!saved.res.window?.length) loadWindow(saved.res.line);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!res) return;
+    try {
+      localStorage.setItem(LAST_KEY, JSON.stringify({ res, at: Date.now() }));
+    } catch {}
+  }, [res]);
+
+  // Keep the screen on while following a live train.
+  useEffect(() => {
+    if (!keepAwake || !res?.liveStatus || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    const acquire = () => {
+      if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((l) => (lock = l)).catch(() => {});
+    };
+    acquire();
+    document.addEventListener("visibilitychange", acquire);
+    return () => {
+      document.removeEventListener("visibilitychange", acquire);
+      lock?.release().catch(() => {});
+    };
+  }, [keepAwake, Boolean(res?.liveStatus)]);
+
+  useEffect(() => {
+    if (!liveFailing) return;
+    const t = setInterval(() => setTick((n) => n + 1), 30000);
+    return () => clearInterval(t);
+  }, [liveFailing]);
   const [dates, setDates] = useState<{ value: string; label: string }[]>([]), [startDate, setStartDate] = useState("");
 
   // Built on the client so "Today" is the visitor's current IST date, not the build date.
@@ -66,6 +122,16 @@ export default function Home() {
   const refPoint = track ? pointAt(track, refKm) : null;
   const trainAt: LL | null = refSource === "live" && liveAt ? liveAt : refPoint?.at ?? null;
   const heading = refSource === "live" && liveBearing !== undefined ? liveBearing : refPoint?.bearing ?? 0;
+  // The toast follows the live train; otherwise it describes where the journey starts.
+  const toastAt: LL | null = refSource === "live" && liveAt ? liveAt : res?.line[0] ?? null;
+  const nowCounts = useMemo(() => {
+    const c = { left: 0, right: 0 };
+    for (const x of sheetRows(res?.window ?? null, refKm, trainAt, heading)) if (x.now && !x.it.crossing) c[x.side]++;
+    return c;
+  }, [res?.window, refKm, trainAt?.[0], trainAt?.[1], heading]);
+  const trainMoving =
+    refSource === "ride" ||
+    (refSource === "live" && res?.liveStatus?.status === "running" && (res.liveStatus.currentLocation?.speedKmh ?? 0) > 0);
 
   // Landmarks within 5 km either side. Wikipedia is queried from the browser: Wikimedia rate-limits per client,
   // so shared server IPs run out quickly. OSM is its own server request since public Overpass servers can be slow.
@@ -116,9 +182,13 @@ export default function Home() {
         const j = await r.json();
         if (j.liveStatus) {
           setRes((prev) => (prev ? { ...prev, liveStatus: j.liveStatus } : prev));
+          setLiveOkAt(Date.now());
+          setLiveFailing(false);
+          return;
         }
       }
     } catch {}
+    setLiveFailing(true);
   };
 
   // Periodic live refresh every 25s when tracking a live train
@@ -180,6 +250,8 @@ export default function Home() {
 
       // First thing: plot all stops & live train on the open-source map immediately!
       setRes({ line, stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber ? startDate : undefined });
+      setLiveOkAt(Date.now());
+      setLiveFailing(false);
       setRideKm(null);
       setManualKm(0);
       setFocusAt(null);
@@ -207,16 +279,29 @@ export default function Home() {
         liveBearing={liveBearing}
         onRideProgress={setRideKm}
         focusAt={focusAt}
+        trainAt={trainAt}
+        heading={heading}
+        trainMoving={trainMoving}
       />
       <div className="bar glass">
-        <strong>{res.title}</strong>
-        <span>
-          {res.stops.length} stops
-          {res.startDate ? ` • started ${dates.find((d) => d.value === res.startDate)?.label ?? res.startDate}` : ""}
-          {res.liveStatus ? ` • Live Tracking active` : ""}
-          {res.window?.length ? ` • ${res.window.length} landmarks within 5 km` : ""}
-        </span>
-        <button onClick={() => { winReq.current++; setWinLoading(false); setRes(null); }}>New search</button>
+        <div className="bar-text">
+          <strong>{res.title.replace(/\s*\(\d+\)$/, "")}</strong>
+          <span>
+            {res.trainNumber ? `${res.trainNumber} · ` : ""}
+            {res.stops.length} stops
+            {res.startDate ? ` · started ${dates.find((d) => d.value === res.startDate)?.label ?? res.startDate}` : ""}
+            {res.window?.length ? ` · ${res.window.length} landmarks` : ""}
+            {liveFailing && liveOkAt ? ` · last updated ${Math.max(1, Math.round((Date.now() - liveOkAt) / 60000))} min ago` : ""}
+          </span>
+        </div>
+        {res.liveStatus && "wakeLock" in navigator && (
+          <button type="button" className={`bar-icon ${keepAwake ? "on" : ""}`} onClick={() => setKeepAwake((k) => !k)} aria-pressed={keepAwake} aria-label="Keep screen on" title={keepAwake ? "Screen stays on" : "Screen may sleep"}>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        )}
+        <button type="button" className="bar-icon" aria-label="New search" title="New search" onClick={() => { winReq.current++; setWinLoading(false); setSheet(null); setRes(null); try { localStorage.removeItem(LAST_KEY); } catch {} }}>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
+        </button>
       </div>
       <WindowPanel
         items={res.window}
@@ -230,6 +315,28 @@ export default function Home() {
         onPick={pickWindow}
         withHud={Boolean(res.liveStatus)}
       />
+      <PlaceToast at={toastAt} items={res.window} />
+      <nav className="side-bar" aria-label="What's outside the window">
+        {(["left", "right"] as Side[]).map((s) => (
+          <button key={s} type="button" className={`side-btn ${s}`} onClick={() => setSheet(s)}>
+            <small>{s === "left" ? "On your left" : "On your right"}</small>
+            <strong>{winLoading && !res.window?.length ? "…" : nowCounts[s]}</strong>
+          </button>
+        ))}
+      </nav>
+      {sheet && (
+        <SideSheet
+          side={sheet}
+          onSide={setSheet}
+          onClose={() => setSheet(null)}
+          onShowOnMap={(it) => { setSheet(null); setFocusAt(it.at); }}
+          items={res.window}
+          loading={winLoading}
+          refKm={refKm}
+          trainAt={trainAt}
+          heading={heading}
+        />
+      )}
       {sel && (
         <div className="scrim" onClick={() => setSel(null)}>
           <div className="modal glass" role="dialog" aria-modal="true" aria-label={sel.name} onClick={(e) => e.stopPropagation()}>
@@ -250,7 +357,7 @@ export default function Home() {
       <div className="center">
         <h1>Rail<br />Vista</h1>
         <form onSubmit={go} className="glass">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Train number (12951) or stations: Mumbai, Surat, Vadodara" aria-label="Train number or stations" autoFocus />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Train no. or stations, e.g. 12951" aria-label="Train number or stations" enterKeyHint="go" autoComplete="off" />
           {/^\d{4,6}$/.test(q.trim()) && dates.length > 0 && (
             <label className="start-date">
               <span>Started</span>
@@ -261,6 +368,13 @@ export default function Home() {
           )}
           <button disabled={busy || !q.trim()}>{busy ? "…" : "Go"}</button>
         </form>
+        <div className="quick" aria-label="Popular trains">
+          {QUICK_TRAINS.map((t) => (
+            <button key={t.no} type="button" onClick={() => setQ(t.no)} className={q.trim() === t.no ? "on" : ""}>
+              <strong>{t.no}</strong> {t.label}
+            </button>
+          ))}
+        </div>
         <p className="status" role="status">{busy && <i className="spin" />}{msg}</p>
       </div>
     </main>
