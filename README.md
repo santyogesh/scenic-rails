@@ -6,4 +6,4 @@ For heavy traffic, replace the OSM tile URL in `components/RouteMap.tsx` with a 
 ## Plan by train number or stations (`/plan`)
 - Track geometry & stations: Powered by RailRadar API (`api.railradar.in/v1`) for train schedules, station search, and GIS railway route geometry.
 - Sights: Wikipedia geosearch along the track.
-- Train and station lookup uses `RAILRADAR_API_KEY`.
+- Train and station lookup uses the `RAILRADAR_API_KEY` environment variable, set in the Vercel project settings.
