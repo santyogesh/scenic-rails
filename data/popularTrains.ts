@@ -1,5 +1,6 @@
 import type { Stop, LiveTrainStatus } from "@/lib/rail";
 import type { LL } from "@/lib/geo";
+import railLines from "./trainLines.json";
 
 export type PopularTrain = {
   number: string;
@@ -14,7 +15,7 @@ export type PopularTrain = {
   line: LL[];
 };
 
-export const popularTrains: Record<string, PopularTrain> = {
+const trains: Record<string, Omit<PopularTrain, "line">> = {
   "12951": {
     number: "12951",
     name: "Mumbai Central - New Delhi Tejas Rajdhani Express",
@@ -33,16 +34,6 @@ export const popularTrains: Record<string, PopularTrain> = {
       { name: "Nagda Jn", code: "NAD", at: [75.4125, 23.4562], arrival: "01:13", departure: "01:15", distance: 695, sequence: 6 },
       { name: "Kota Jn", code: "KOTA", at: [75.8815, 25.2241], arrival: "03:15", departure: "03:20", distance: 920, sequence: 7 },
       { name: "New Delhi", code: "NDLS", at: [77.2203, 28.6418], arrival: "08:32", distance: 1388, sequence: 8 },
-    ],
-    line: [
-      [72.8194, 18.9708], [72.835, 19.01], [72.845, 19.06], [72.8567, 19.2289],
-      [72.81, 19.45], [72.78, 19.70], [72.76, 19.98], [72.89, 20.38],
-      [72.93, 20.60], [72.95, 20.85], [72.8409, 21.2050], [72.98, 21.50],
-      [73.01, 21.70], [73.08, 22.01], [73.1804, 22.3110], [73.61, 22.75],
-      [74.25, 22.90], [74.55, 23.00], [75.0494, 23.3394], [75.4125, 23.4562],
-      [75.60, 23.85], [75.80, 24.30], [75.8815, 25.2241], [76.35, 25.80],
-      [76.60, 26.30], [76.90, 26.80], [77.20, 27.20], [77.50, 27.50],
-      [77.40, 27.90], [77.30, 28.30], [77.2203, 28.6418],
     ],
   },
   "12952": {
@@ -64,16 +55,6 @@ export const popularTrains: Record<string, PopularTrain> = {
       { name: "Borivali", code: "BVI", at: [72.8567, 19.2289], arrival: "07:35", departure: "07:37", distance: 1358, sequence: 7 },
       { name: "Mumbai Central", code: "MMCT", at: [72.8194, 18.9708], arrival: "08:35", distance: 1388, sequence: 8 },
     ],
-    line: [
-      [77.2203, 28.6418], [77.30, 28.30], [77.40, 27.90], [77.50, 27.50],
-      [77.20, 27.20], [76.90, 26.80], [76.60, 26.30], [76.35, 25.80],
-      [75.8815, 25.2241], [75.80, 24.30], [75.60, 23.85], [75.4125, 23.4562],
-      [75.0494, 23.3394], [74.55, 23.00], [74.25, 22.90], [73.61, 22.75],
-      [73.1804, 22.3110], [73.08, 22.01], [73.01, 21.70], [72.98, 21.50],
-      [72.8409, 21.2050], [72.95, 20.85], [72.93, 20.60], [72.89, 20.38],
-      [72.76, 19.98], [72.78, 19.70], [72.81, 19.45], [72.8567, 19.2289],
-      [72.845, 19.06], [72.835, 19.01], [72.8194, 18.9708],
-    ],
   },
   "12301": {
     number: "12301",
@@ -93,13 +74,6 @@ export const popularTrains: Record<string, PopularTrain> = {
       { name: "Prayagraj Jn", code: "PRYJ", at: [81.8349, 25.4437], arrival: "02:33", departure: "02:35", distance: 817, sequence: 6 },
       { name: "Kanpur Central", code: "CNB", at: [80.3536, 26.4539], arrival: "04:40", departure: "04:45", distance: 1011, sequence: 7 },
       { name: "New Delhi", code: "NDLS", at: [77.2203, 28.6418], arrival: "10:05", distance: 1451, sequence: 8 },
-    ],
-    line: [
-      [88.3426, 22.5838], [87.90, 23.10], [87.40, 23.45], [86.9746, 23.6889],
-      [86.4304, 23.7957], [85.70, 24.20], [84.9994, 24.8033], [84.10, 25.05],
-      [83.1167, 25.2818], [82.50, 25.35], [81.8349, 25.4437], [81.10, 25.90],
-      [80.3536, 26.4539], [79.40, 27.10], [78.60, 27.60], [77.90, 28.10],
-      [77.2203, 28.6418],
     ],
   },
   "12002": {
@@ -123,12 +97,6 @@ export const popularTrains: Record<string, PopularTrain> = {
       { name: "Bhopal Jn", code: "BPL", at: [77.4126, 23.2599], arrival: "14:07", departure: "14:12", distance: 702, sequence: 9 },
       { name: "Rani Kamalapati", code: "RKMP", at: [77.4428, 23.2081], arrival: "14:40", distance: 708, sequence: 10 },
     ],
-    line: [
-      [77.2203, 28.6418], [77.35, 28.15], [77.6737, 27.4924], [78.0081, 27.1591],
-      [77.8927, 26.7025], [77.9947, 26.4950], [78.1828, 26.2183], [78.35, 25.80],
-      [78.5583, 25.4484], [78.48, 25.00], [78.4167, 24.6875], [78.10, 24.00],
-      [77.70, 23.60], [77.4126, 23.2599], [77.4428, 23.2081],
-    ],
   },
   "20901": {
     number: "20901",
@@ -148,14 +116,13 @@ export const popularTrains: Record<string, PopularTrain> = {
       { name: "Ahmedabad Jn", code: "ADI", at: [72.6003, 23.0232], arrival: "11:25", departure: "11:30", distance: 492, sequence: 6 },
       { name: "Gandhinagar Capital", code: "GNC", at: [72.6369, 23.2230], arrival: "12:25", distance: 522, sequence: 7 },
     ],
-    line: [
-      [72.8194, 18.9708], [72.845, 19.06], [72.8567, 19.2289], [72.81, 19.45],
-      [72.78, 19.70], [72.76, 19.98], [72.9126, 20.3709], [72.93, 20.60],
-      [72.95, 20.85], [72.8409, 21.2050], [73.01, 21.70], [73.1804, 22.3110],
-      [72.95, 22.65], [72.6003, 23.0232], [72.6369, 23.2230],
-    ],
   },
 };
+
+// Lines traced on OSM rail track (BRouter rail profile) through each train's halts.
+export const popularTrains: Record<string, PopularTrain> = Object.fromEntries(
+  Object.entries(trains).map(([no, t]) => [no, { ...t, line: (railLines as unknown as Record<string, LL[]>)[no] ?? t.halts.map((h) => h.at) }])
+);
 
 /** Minutes since 00:00 IST on `date` (YYYY-MM-DD). */
 function minutesSince(date: string): number {

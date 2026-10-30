@@ -2,7 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import Journey from "@/components/Journey";
-import { geocodeStop, buildTrack, findSights, pool, Stop } from "@/lib/rail";
+import { geocodeStop, buildTrack, findSights, pool, traceRail, Stop } from "@/lib/rail";
+import { coarse } from "@/lib/railTrack";
 import type { Route } from "@/data/routes";
 import type { LL } from "@/lib/geo";
 
@@ -29,6 +30,11 @@ export default function Plan() {
         }
         if (Array.isArray(j.line) && j.line.length >= 2) {
           line = j.line;
+          if (coarse(line) && Array.isArray(j.waypoints) && j.waypoints.length >= 2) {
+            setMsg("Tracing the rail track…");
+            const traced = await traceRail(j.waypoints);
+            if (traced) { line = traced.line; bad = traced.approx.length; }
+          }
           routeName = j.title || `Train ${no}`;
           place = j.place || `${j.stops[0]} to ${j.stops[j.stops.length - 1]}`;
           distance = j.distance || "";

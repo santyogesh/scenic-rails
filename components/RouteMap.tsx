@@ -32,10 +32,30 @@ export type RouteMapProps = {
   trainAt?: LL | null;
   heading?: number;
   trainMoving?: boolean;
+  /** Index ranges of the line drawn straight because no rail track was matched; shown dashed. */
+  approx?: [number, number][];
 };
+
+type Lines = { type: "Feature"; properties: {}; geometry: { type: "MultiLineString"; coordinates: LL[][] } };
+const multi = (parts: LL[][]): Lines => ({ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: parts.filter((p) => p.length >= 2) } });
+
+/** Split the line into on-track parts and approximate (dashed) parts. */
+function splitRoute(line: LL[], approx: [number, number][] = []): { solid: Lines; dashed: Lines } {
+  const solid: LL[][] = [], dashed: LL[][] = [];
+  let i = 0;
+  for (const [a0, b0] of [...approx].sort((x, y) => x[0] - y[0])) {
+    const a = Math.max(0, Math.min(a0, line.length - 1)), b = Math.max(a, Math.min(b0, line.length - 1));
+    if (a > i) solid.push(line.slice(i, a + 1));
+    dashed.push(line.slice(a, b + 1));
+    i = Math.max(i, b);
+  }
+  if (i < line.length - 1) solid.push(line.slice(i));
+  return { solid: multi(solid), dashed: multi(dashed) };
+}
 
 export default function RouteMap({
   line: propLine,
+  approx,
   stops: propStops,
   sights: propSights,
   onPick,
@@ -80,6 +100,9 @@ export default function RouteMap({
   const train3d = useRef<Train3D | null>(null);
   const pose = useRef({ at: trainAt, heading, moving: trainMoving });
   pose.current = { at: trainAt, heading, moving: trainMoving };
+  const routeData = useRef({ line, approx });
+  routeData.current = { line, approx };
+  const hasLine = line.length >= 2;
   const bounds = useMemo(
     () => (line.length ? line.reduce((a, c) => a.extend(c), new maplibregl.LngLatBounds(line[0], line[0])) : null),
     [line]
@@ -137,18 +160,23 @@ export default function RouteMap({
     m.on("zoom", toggle3d);
 
     const drawRoute = () => {
+      const line = routeData.current.line;
       if (!map.current || line.length < 2) return;
       m.resize();
       openView();
       toggle3d();
       if (m.getSource("r")) return;
 
-      const feat = (c: LL[]) => ({
-        type: "Feature" as const,
-        properties: {},
-        geometry: { type: "LineString" as const, coordinates: c },
+      const { solid, dashed } = splitRoute(line, routeData.current.approx);
+      m.addSource("r", { type: "geojson", data: solid });
+      m.addSource("r-approx", { type: "geojson", data: dashed });
+      m.addLayer({
+        id: "approx",
+        type: "line",
+        source: "r-approx",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#ffd37a", "line-width": 3, "line-opacity": 0.45, "line-dasharray": [1.5, 2] },
       });
-      m.addSource("r", { type: "geojson", data: feat(line) });
       m.addLayer({
         id: "glow",
         type: "line",
@@ -163,28 +191,28 @@ export default function RouteMap({
         paint: { "line-color": "#ffd37a", "line-width": 4 },
       });
 
-      const n = line.length - 1,
-        t0 = performance.now(),
-        dur = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 2500;
-      const tick = (now: number) => {
-        if (!map.current || line.length < 2) return;
-        const t = Math.min((now - t0) / dur, 1),
-          k = t * n,
-          i = Math.min(Math.floor(k), n - 1);
-        const pts = line.slice(0, i + 1);
-        if (i < n) {
-          const a = line[i],
-            c = line[i + 1];
-          if (a && c && typeof a[0] === "number" && typeof c[0] === "number") {
+      // Draw-on intro, only for a line that is fully on track.
+      if (!routeData.current.approx?.length) {
+        const n = line.length - 1,
+          t0 = performance.now(),
+          dur = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 2500;
+        const tick = (now: number) => {
+          if (!map.current || routeData.current.line !== line) return;
+          const t = Math.max(0, Math.min((now - t0) / dur, 1)),
+            k = t * n,
+            i = Math.min(Math.floor(k), n - 1);
+          const pts = line.slice(0, i + 1);
+          if (i < n) {
+            const a = line[i],
+              c = line[i + 1];
             const f = k - i;
             pts.push([a[0] + (c[0] - a[0]) * f, a[1] + (c[1] - a[1]) * f]);
           }
-        }
-        const src = m.getSource("r") as maplibregl.GeoJSONSource | undefined;
-        if (src) src.setData(feat(pts.length >= 2 ? pts : [line[0], line[1]]));
-        if (t < 1) animRaf.current = requestAnimationFrame(tick);
-      };
-      animRaf.current = requestAnimationFrame(tick);
+          (m.getSource("r") as maplibregl.GeoJSONSource | undefined)?.setData(multi([pts]));
+          if (t < 1) animRaf.current = requestAnimationFrame(tick);
+        };
+        animRaf.current = requestAnimationFrame(tick);
+      }
 
       createTrain3D()
         .then((t) => {
@@ -219,7 +247,19 @@ export default function RouteMap({
       m.remove();
       map.current = null;
     };
-  }, [line]);
+    // The map is built once per journey; a refined line is swapped in below without moving the camera.
+  }, [hasLine]);
+
+  useEffect(() => {
+    const m = map.current;
+    const solidSrc = m?.getSource("r") as maplibregl.GeoJSONSource | undefined;
+    const dashedSrc = m?.getSource("r-approx") as maplibregl.GeoJSONSource | undefined;
+    if (!solidSrc || !dashedSrc || line.length < 2) return;
+    cancelAnimationFrame(animRaf.current);
+    const { solid, dashed } = splitRoute(line, approx);
+    solidSrc.setData(solid);
+    dashedSrc.setData(dashed);
+  }, [line, approx]);
 
   useEffect(() => {
     if (trainAt) train3d.current?.setPose(trainAt, heading, trainMoving);
@@ -272,7 +312,8 @@ export default function RouteMap({
         m.flyTo({ center: st.at, zoom: 10, speed: 1.3 });
       };
 
-      const marker = new maplibregl.Marker({ element: wrap, anchor: "center" })
+      // Anchor on the dot (not the dot + label box) so the station sits exactly on the track.
+      const marker = new maplibregl.Marker({ element: wrap, anchor: "left", offset: [isTerm ? -9 : -7, 0] })
         .setLngLat(st.at)
         .setPopup(popup)
         .addTo(m);

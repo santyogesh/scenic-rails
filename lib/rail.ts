@@ -1,4 +1,5 @@
 import { hav, LL } from "./geo";
+import { railUrl, type RailRoute } from "./railTrack";
 
 export type Sight = { name: string; at: LL; text: string; img?: string; url?: string };
 export type Stop = {
@@ -79,23 +80,25 @@ export async function geocode(name: string): Promise<LL | null> {
   return s?.at ?? null;
 }
 
-// Fetch RailRadar GIS rail track geometry between consecutive stops.
+/** Route through `points` on real railway track; null if the server couldn't be reached. */
+export async function traceRail(points: LL[], snapKm?: number): Promise<RailRoute | null> {
+  try {
+    const r = await tfetch(railUrl(points, snapKm), {}, 60000);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return Array.isArray(j?.line) && j.line.length >= 2 ? { line: j.line, approx: Array.isArray(j.approx) ? j.approx : [] } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Track line through the stops; `bad` counts stretches drawn straight for lack of track data. */
 export async function buildTrack(stops: Stop[], say: (s: string) => void) {
-  const legs = stops.slice(0, -1).map((s, i) => [s, stops[i + 1]] as const);
-  let done = 0, bad = 0;
-  const segments = await pool(legs, 3, async ([a, b]) => {
-    try {
-      const r = await tfetch(`/api/train?from=${encodeURIComponent(a.name)}&to=${encodeURIComponent(b.name)}`, {}, 15000);
-      const j = r.ok ? await r.json() : null;
-      say(`Downloading RailRadar tracks ${++done}/${legs.length}`);
-      if (Array.isArray(j?.line) && j.line.length >= 2) return j.line as LL[];
-    } catch {
-      say(`Downloading RailRadar tracks ${++done}/${legs.length}`);
-    }
-    bad++;
-    return [a.at, b.at] as LL[];
-  });
-  return { line: segments.flat(), bad };
+  say("Tracing the rail track…");
+  const pts = stops.map((s) => s.at);
+  const r = await traceRail(pts);
+  if (r) return { line: r.line, approx: r.approx, bad: r.approx.length };
+  return { line: pts, approx: [[0, pts.length - 1]] as [number, number][], bad: pts.length - 1 };
 }
 
 const GOOD = /waterfall|lake|fort|hill|valley|beach|bridge|viaduct|tunnel|river|ghat|pass\b|national park|sanctuary|wildlife|mountain|peak|glacier|gorge|canyon|coast|island|reservoir|dam\b|lagoon|forest|cave|temple|palace|cliff|lighthouse/i;
