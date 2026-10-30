@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import { track as trackEvent } from "@vercel/analytics";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { hav, LL } from "@/lib/geo";
 import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
@@ -442,6 +443,7 @@ export default function RouteMap({
       return;
     }
     setRiding(true);
+    trackEvent("ride_start");
     const cum = [0];
     line.forEach((p, i) => {
       if (i) cum.push(cum[i - 1] + hav(line[i - 1], p));
