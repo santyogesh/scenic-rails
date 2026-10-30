@@ -54,7 +54,7 @@ export default function Home() {
   const [res, setRes] = useState<Result | null>(null), [sel, setSel] = useState<Sight | WindowItem | null>(null), [pics, setPics] = useState<string[] | null>(null);
   const [winLoading, setWinLoading] = useState(false), [rideKm, setRideKm] = useState<number | null>(null), [manualKm, setManualKm] = useState(0);
   const [focusAt, setFocusAt] = useState<LL | null>(null), [summary, setSummary] = useState<string | null>(null);
-  const winReq = useRef(0), railReq = useRef(0);
+  const winReq = useRef(0), railReq = useRef(0), realUntil = useRef(0);
   const [tracing, setTracing] = useState(false);
   const [sheet, setSheet] = useState<Side | null>(null);
   const [keepAwake, setKeepAwake] = useState(true), [liveOkAt, setLiveOkAt] = useState(0), [liveFailing, setLiveFailing] = useState(false);
@@ -118,16 +118,25 @@ export default function Home() {
   }, [sel]);
 
   const track = useMemo(() => (res ? makeTrack(res.line) : null), [res?.line]);
-  const liveAt = res?.liveStatus?.currentLocation?.at;
+  const live = res?.liveStatus;
+  const liveAt = live?.currentLocation?.at;
   const liveLoc = useMemo(() => (track && liveAt ? locate(track, liveAt) : null), [track, liveAt?.[0], liveAt?.[1]]);
-  const liveKm = liveLoc && liveLoc.offsetKm < 20 ? liveLoc.km : null;
+  // A timetable estimate is a distance along the route, so place it on the traced track by distance.
+  const estKm = live?.estimated && track && live.currentLocation?.distanceFromOriginKm !== undefined
+    ? Math.min(track.total, (live.currentLocation.distanceFromOriginKm * track.total) / (live.totalDistance || track.total))
+    : null;
+  const liveKm = estKm ?? (liveLoc && liveLoc.offsetKm < 20 ? liveLoc.km : null);
   const reportedBearing = res?.liveStatus?.currentLocation?.bearing;
   const liveBearing = track && liveKm !== null ? reportedBearing ?? pointAt(track, liveKm).bearing : undefined;
   const refSource = rideKm !== null ? "ride" : liveKm !== null ? "live" : "manual";
   const refKm = rideKm ?? liveKm ?? manualKm;
   // The train's actual coordinates and running direction; left/right in the Now view is decided from these.
   const refPoint = track ? pointAt(track, refKm) : null;
-  const trainAt: LL | null = refSource === "live" && liveAt ? liveAt : refPoint?.at ?? null;
+  const trainAt: LL | null = refPoint?.at ?? null;
+  const liveOnTrack = useMemo(
+    () => (live && refSource === "live" && trainAt && live.currentLocation ? { ...live, currentLocation: { ...live.currentLocation, at: trainAt } } : live),
+    [live, refSource, trainAt?.[0], trainAt?.[1]]
+  );
   const heading = refSource === "live" && liveBearing !== undefined ? liveBearing : refPoint?.bearing ?? 0;
   // The toast follows the live train; otherwise it describes where the journey starts.
   const toastAt: LL | null = refSource === "live" && liveAt ? liveAt : res?.line[0] ?? null;
@@ -204,14 +213,18 @@ export default function Home() {
     return () => { ok = false; removeEventListener("keydown", k); };
   }, [sel]);
 
-  const refreshLiveStatus = async () => {
+  // `real` asks for the train's reported position (RailRadar, quota-limited); otherwise the timetable estimate.
+  // A reported position is kept for 5 minutes before the automatic refresh goes back to estimating.
+  const refreshLiveStatus = async (real = true) => {
     if (!res?.trainNumber) return;
+    if (!real && Date.now() < realUntil.current) return;
     try {
       const date = res.startDate ? `&date=${res.startDate}` : "";
-      const r = await fetch(`/api/train?no=${encodeURIComponent(res.trainNumber)}&liveOnly=1${date}`);
+      const r = await fetch(`/api/train?no=${encodeURIComponent(res.trainNumber)}&liveOnly=1${date}${real ? "&real=1" : ""}`);
       if (r.ok) {
         const j = await r.json();
         if (j.liveStatus) {
+          if (real && !j.liveStatus.estimated) realUntil.current = Date.now() + 5 * 60000;
           setRes((prev) => (prev ? { ...prev, liveStatus: j.liveStatus } : prev));
           setLiveOkAt(Date.now());
           setLiveFailing(false);
@@ -226,7 +239,7 @@ export default function Home() {
   useEffect(() => {
     if (!res?.trainNumber || !res.liveStatus?.isLive) return;
     const timer = setInterval(() => {
-      refreshLiveStatus();
+      refreshLiveStatus(false);
     }, 25000);
     return () => clearInterval(timer);
   }, [res?.trainNumber, res?.liveStatus?.isLive]);
@@ -244,7 +257,7 @@ export default function Home() {
 
       if (/^\d{4,6}$/.test(t)) {
         trainNumber = t;
-        setMsg("Looking up train " + t + " on RailRadar…");
+        setMsg("Looking up train " + t + "…");
         const r = await fetch(`/api/train?no=${t}${startDate ? `&date=${startDate}` : ""}`, { signal: AbortSignal.timeout(20000) }), j = await r.json();
         if (!r.ok) throw new Error(j.error);
         liveStatus = j.liveStatus || null;
@@ -266,7 +279,7 @@ export default function Home() {
       } else {
         const list = t.split(",").map((s) => s.trim()).filter(Boolean);
         if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
-        setMsg("Locating stations on RailRadar…");
+        setMsg("Locating stations…");
         const found = await pool(list, 4, geocodeStop);
         stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
@@ -309,7 +322,7 @@ export default function Home() {
         stops={res.stops}
         sights={res.window ?? []}
         onPick={setSel}
-        liveStatus={res.liveStatus}
+        liveStatus={liveOnTrack}
         trainNumber={res.trainNumber}
         onRefreshLive={res.trainNumber ? refreshLiveStatus : undefined}
         liveBearing={liveBearing}

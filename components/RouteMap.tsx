@@ -355,25 +355,25 @@ export default function RouteMap({
       const tag = document.createElement("div");
       tag.className = "live-train-tag";
       const isLate = (liveStatus.delayMinutes || 0) > 0;
-      tag.innerHTML = `<span>${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
+      tag.innerHTML = `<span>${liveStatus.trainNumber}</span><strong class="${liveStatus.estimated ? "est" : isLate ? "late" : "ontime"}">${liveStatus.estimated ? "TIMETABLE" : isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
 
       wrap.appendChild(radar);
       wrap.appendChild(heading);
       wrap.appendChild(badge);
       wrap.appendChild(tag);
 
-      const delayColor = isLate ? "#f59e0b" : "#10b981";
+      const delayColor = liveStatus.estimated ? "#64748b" : isLate ? "#f59e0b" : "#10b981";
       const popup = new maplibregl.Popup({ offset: 20, closeButton: true }).setHTML(`
         <div class="live-popup-card">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:6px">
             <strong style="color:#0f172a;font-size:0.95rem">🚆 Train ${liveStatus.trainNumber}</strong>
-            <span style="font-size:0.75rem;font-weight:700;color:${delayColor};background:${delayColor}15;padding:2px 6px;border-radius:4px">${isLate ? `+${liveStatus.delayMinutes} min delay` : "On Time"}</span>
+            <span style="font-size:0.75rem;font-weight:700;color:${delayColor};background:${delayColor}15;padding:2px 6px;border-radius:4px">${liveStatus.estimated ? "Timetable estimate" : isLate ? `+${liveStatus.delayMinutes} min delay` : "On Time"}</span>
           </div>
           <div style="font-size:0.82rem;color:#334155;margin-bottom:4px">
             <strong>Location:</strong> ${liveStatus.currentLocation.stationName || "In transit"}
           </div>
           ${liveStatus.nextHalt ? `<div style="font-size:0.82rem;color:#334155;margin-bottom:4px"><strong>Next stop:</strong> ${liveStatus.nextHalt.stationName} ${liveStatus.nextHalt.scheduledArrival ? `(Arr ${liveStatus.nextHalt.scheduledArrival})` : ""}</div>` : ""}
-          ${liveStatus.currentLocation.speedKmh ? `<div style="font-size:0.82rem;color:#334155;margin-bottom:4px"><strong>Live Speed:</strong> ~${liveStatus.currentLocation.speedKmh} km/h</div>` : ""}
+          ${liveStatus.currentLocation.speedKmh && !liveStatus.estimated ? `<div style="font-size:0.82rem;color:#334155;margin-bottom:4px"><strong>Live Speed:</strong> ~${liveStatus.currentLocation.speedKmh} km/h</div>` : ""}
           ${liveStatus.currentLocation.distanceFromOriginKm !== undefined ? `<div style="font-size:0.82rem;color:#64748b">Distance: ${liveStatus.currentLocation.distanceFromOriginKm} km covered</div>` : ""}
           <div style="font-size:0.7rem;color:#94a3b8;margin-top:6px">Updated: ${new Date(liveStatus.lastUpdatedAt).toLocaleTimeString()}</div>
         </div>
@@ -392,7 +392,7 @@ export default function RouteMap({
       const tag = liveMarker.current.getElement().querySelector(".live-train-tag");
       if (tag) {
         const isLate = (liveStatus.delayMinutes || 0) > 0;
-        tag.innerHTML = `<span>${liveStatus.trainNumber}</span><strong class="${isLate ? "late" : "ontime"}">${isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
+        tag.innerHTML = `<span>${liveStatus.trainNumber}</span><strong class="${liveStatus.estimated ? "est" : isLate ? "late" : "ontime"}">${liveStatus.estimated ? "TIMETABLE" : isLate ? `+${liveStatus.delayMinutes}m` : "ON TIME"}</strong>`;
       }
     }
     liveMarker.current
@@ -533,6 +533,8 @@ export default function RouteMap({
   };
 
   const isLate = (liveStatus?.delayMinutes || 0) > 0;
+  const est = Boolean(liveStatus?.estimated);
+  const delayLabel = est ? "Timetable" : isLate ? `+${liveStatus?.delayMinutes}m` : "On time";
 
   return (
     <>
@@ -544,7 +546,7 @@ export default function RouteMap({
           <div className="live-hud-top">
             <button type="button" className="live-pulse-badge" onClick={() => setHudOpen((o) => !o)} aria-expanded={hudOpen}>
               <span className="live-dot" />
-              <span>{hudOpen ? "LIVE STATUS" : `${liveStatus.trainNumber} · ${isLate ? `+${liveStatus.delayMinutes}m` : "On time"}`}</span>
+              <span>{hudOpen ? (est ? "SCHEDULED POSITION" : "LIVE STATUS") : `${liveStatus.trainNumber} · ${delayLabel}`}</span>
               <span className="chev">{hudOpen ? "▾" : "▸"}</span>
             </button>
             <div className="live-hud-actions">
@@ -560,7 +562,7 @@ export default function RouteMap({
                 <button
                   type="button"
                   className={isRefreshing ? "live-action-btn spinning" : "live-action-btn"}
-                  title="Refresh GPS location"
+                  title="Get the train's reported position"
                   onClick={handleRefresh}
                   disabled={isRefreshing}
                 >
@@ -574,10 +576,13 @@ export default function RouteMap({
           <div className="live-hud-main">
             <div className="live-status-row">
               <span className="live-train-no">🚆 {liveStatus.trainNumber}</span>
-              <span className={`live-delay-pill ${isLate ? "late" : "ontime"}`}>
-                {isLate ? `+${liveStatus.delayMinutes}m Late` : "On Time"}
+              <span className={`live-delay-pill ${est ? "est" : isLate ? "late" : "ontime"}`}>
+                {est ? "Timetable estimate" : isLate ? `+${liveStatus.delayMinutes}m Late` : "On Time"}
               </span>
             </div>
+            {est && (
+              <div className="live-est-note">Worked out from the timetable, so delays aren&apos;t shown. Tap 🔄 for the train&apos;s reported position.</div>
+            )}
 
             <div className="live-location-desc">
               <strong>Location:</strong> {liveStatus.currentLocation?.stationName || "In transit"}

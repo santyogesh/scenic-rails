@@ -22,7 +22,7 @@ export default function Plan() {
       let bad = 0;
 
       if (!list.length) {
-        setMsg("Looking up train " + no + " on RailRadar");
+        setMsg("Looking up train " + no + "");
         const r = await fetch("/api/train?no=" + encodeURIComponent(no)), j = await r.json();
         if (!r.ok) throw new Error(j.error);
         if (Array.isArray(j.stationStops) && j.stationStops.length >= 2) {
@@ -40,7 +40,7 @@ export default function Plan() {
           distance = j.distance || "";
           duration = j.duration || "";
         } else {
-          setMsg("Locating stations on RailRadar");
+          setMsg("Locating stations");
           const found = await pool(j.stops as string[], 4, geocodeStop);
           stops = found.filter((s): s is Stop => Boolean(s));
           if (stops.length < 2) throw new Error("Could not locate enough stations on the map.");
@@ -51,7 +51,7 @@ export default function Plan() {
           place = `${stops[0].name} to ${stops[stops.length - 1].name}`;
         }
       } else {
-        setMsg("Locating stations on RailRadar");
+        setMsg("Locating stations");
         const found = await pool(list, 4, geocodeStop);
         stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate enough stations on the map.");
