@@ -15,5 +15,12 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#070b14" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (<html lang="en" className={`${display.variable} ${body.variable}`}><body>{children}<Analytics /><SpeedInsights /></body></html>);
+  return (
+    <html lang="en" className={`${display.variable} ${body.variable}`}>
+      <head>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6491192497291818" crossOrigin="anonymous" />
+      </head>
+      <body>{children}<Analytics /><SpeedInsights /></body>
+    </html>
+  );
 }
