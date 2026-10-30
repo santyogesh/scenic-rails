@@ -4,6 +4,7 @@ import maplibregl from "maplibre-gl";
 import { track as trackEvent } from "@vercel/analytics";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { hav, LL } from "@/lib/geo";
+import { bearing, locate } from "@/lib/side";
 import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
 import type { Route } from "@/data/routes";
 import { headingTransform, TRAIN_MASCOT_SVG } from "./TrainMascot";
@@ -92,6 +93,11 @@ export default function RouteMap({
   const liveMarker = useRef<maplibregl.Marker | null>(null);
   const raf = useRef(0);
   const animRaf = useRef(0);
+  const ridingRef = useRef(false);
+  const liveRef = useRef(liveStatus);
+  const bearingRef = useRef(liveBearing);
+  liveRef.current = liveStatus;
+  bearingRef.current = liveBearing;
   const [riding, setRiding] = useState(false);
   const [activeStopIdx, setActiveStopIdx] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -234,6 +240,7 @@ export default function RouteMap({
       clearTimeout(resizeTimer);
       cancelAnimationFrame(animRaf.current);
       cancelAnimationFrame(raf.current);
+      ridingRef.current = false;
       setRiding(false);
       stopMarkers.current.forEach((mk) => mk.remove());
       stopMarkers.current = [];
@@ -262,7 +269,8 @@ export default function RouteMap({
   }, [line, approx]);
 
   useEffect(() => {
-    if (trainAt) train3d.current?.setPose(trainAt, heading, trainMoving);
+    if (ridingRef.current || !trainAt) return;
+    train3d.current?.setPose(trainAt, heading, trainMoving);
   }, [trainAt?.[0], trainAt?.[1], heading, trainMoving]);
 
   // 2. Plot ALL train stops on the open-source map
@@ -324,7 +332,7 @@ export default function RouteMap({
   // 3. Visualise LIVE RUNNING TRAIN on the map
   useEffect(() => {
     const m = map.current;
-    if (!m) return;
+    if (!m || ridingRef.current) return;
 
     if (!liveStatus?.currentLocation?.at) {
       if (liveMarker.current) {
@@ -405,6 +413,7 @@ export default function RouteMap({
     const m = map.current;
     if (!m || liveBearing === undefined) return;
     const orient = () => {
+      if (ridingRef.current) return;
       const arrow = liveMarker.current?.getElement().querySelector<HTMLElement>(".live-heading");
       if (arrow) {
         arrow.style.transform = headingTransform(liveBearing, m.getBearing());
@@ -474,52 +483,129 @@ export default function RouteMap({
     }
   };
 
+  const placeTrain = (p: LL, h: number, moving: boolean) => {
+    const mapNow = map.current;
+    if (!mapNow) return;
+    train3d.current?.setPose(p, h, moving, 0);
+    let marker = liveMarker.current;
+    if (!marker) {
+      const wrap = document.createElement("div");
+      wrap.className = "live-train-marker";
+      const arrowEl = document.createElement("div");
+      arrowEl.className = "live-heading";
+      arrowEl.innerHTML = "<i></i>";
+      const badge = document.createElement("div");
+      badge.className = "live-loco";
+      badge.innerHTML = TRAIN_MASCOT_SVG;
+      wrap.append(arrowEl, badge);
+      marker = new maplibregl.Marker({ element: wrap, anchor: "center" }).setLngLat(p).addTo(mapNow);
+      liveMarker.current = marker;
+    } else {
+      marker.setLngLat(p);
+    }
+    const el = marker.getElement();
+    el.classList.toggle("moving", moving);
+    const arrow = el.querySelector<HTMLElement>(".live-heading");
+    if (arrow) {
+      arrow.style.transition = moving ? "none" : "";
+      arrow.style.transform = headingTransform(h, mapNow.getBearing());
+      arrow.style.opacity = "1";
+    }
+  };
+
+  const stopRide = () => {
+    cancelAnimationFrame(raf.current);
+    ridingRef.current = false;
+    setRiding(false);
+    onRideProgress?.(null);
+    const at = liveRef.current?.currentLocation?.at;
+    if (!at) {
+      liveMarker.current?.getElement().classList.remove("moving");
+      return;
+    }
+    const status = liveRef.current;
+    const h = bearingRef.current ?? heading;
+    placeTrain(at, h, status?.status === "running" && (status.currentLocation?.speedKmh ?? 0) > 0);
+  };
+
   const ride = () => {
     const m = map.current;
     if (!m || line.length < 2) return;
-    if (riding) {
-      cancelAnimationFrame(raf.current);
-      setRiding(false);
-      onRideProgress?.(null);
+    if (ridingRef.current) {
+      stopRide();
       return;
     }
-    setRiding(true);
-    trackEvent("ride_start");
     const cum = [0];
     line.forEach((p, i) => {
       if (i) cum.push(cum[i - 1] + hav(line[i - 1], p));
     });
     const total = cum[cum.length - 1];
-    if (!total || isNaN(total)) {
-      setRiding(false);
-      return;
+    if (!total || isNaN(total)) return;
+
+    let startKm = 0;
+    let restarted = false;
+    const origin = pose.current.at;
+    if (origin) {
+      const loc = locate({ line, cum, total }, origin);
+      if (loc && loc.offsetKm < 30) {
+        if (loc.km < total * 0.98) startKm = loc.km;
+        else restarted = true;
+      }
     }
-    const dur = Math.min(90000, Math.max(25000, total * 60)),
-      t0 = performance.now();
-    let k = 0;
-    let lastReport = 0;
-    const at = (d: number): LL => {
-      while (k < cum.length - 2 && cum[k + 1] < d) k++;
-      const span = cum[k + 1] - cum[k] || 1;
-      const f = (d - cum[k]) / span;
-      const p0 = line[k] || line[0];
-      const p1 = line[k + 1] || p0;
-      return [p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f];
+    const span = total - startKm;
+    const fullDur = Math.min(90000, Math.max(25000, total * 60));
+    const dur = Math.max(4000, fullDur * (span / total));
+
+    const sample = (d: number, from: number) => {
+      let i = from;
+      const dist = Math.max(0, Math.min(d, total));
+      while (i < cum.length - 2 && cum[i + 1] < dist) i++;
+      const a = line[i],
+        b = line[i + 1] ?? a;
+      const f = Math.max(0, Math.min(1, (dist - cum[i]) / ((cum[i + 1] - cum[i]) || 1)));
+      return { p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f] as LL, i };
     };
+
+    const first = sample(startKm, 0);
+    const look0 = sample(Math.min(startKm + Math.max(2, total / 80), total), first.i);
+    let cursor = first.i;
+    let head = bearing(first.p, look0.p);
+    // Keep the current framing. The camera then translates by exactly the train's movement.
+    const originCenter = m.getCenter();
+    const offLng = restarted ? 0 : originCenter.lng - first.p[0];
+    const offLat = restarted ? 0 : originCenter.lat - first.p[1];
+    let lastReport = 0;
+    let lastNow = performance.now();
+    const t0 = lastNow;
+
+    ridingRef.current = true;
+    setRiding(true);
+    trackEvent("ride_start");
+    m.stop();
+
     const step = (now: number) => {
-      const d = Math.min((now - t0) / dur, 1) * total,
-        p = at(d),
-        q = at(Math.min(d + Math.max(2, total / 80), total));
-      m.jumpTo({ center: p, bearing: (Math.atan2(q[0] - p[0], q[1] - p[1]) * 180) / Math.PI, pitch: 60, zoom: 11 });
+      const mapNow = map.current;
+      if (!ridingRef.current || !mapNow) return;
+      const u = Math.min((now - t0) / dur, 1);
+      const d = startKm + u * span;
+      const here = sample(d, cursor);
+      cursor = here.i;
+      const aheadKm = Math.min(d + Math.max(2, total / 80), total);
+      const look = sample(aheadKm, cursor);
+      const target = aheadKm - d < 0.05 ? head : bearing(here.p, look.p);
+      const dt = Math.min(50, now - lastNow);
+      lastNow = now;
+      head += ((((target - head) % 360) + 540) % 360 - 180) * (1 - Math.exp(-dt / 280));
+      const h = (head + 360) % 360;
+      placeTrain(here.p, h, true);
+      // Pan only, at the train's speed. Bearing, pitch, and zoom stay so the map does not spin.
+      mapNow.jumpTo({ center: [here.p[0] + offLng, here.p[1] + offLat] });
       if (now - lastReport > 250) {
         lastReport = now;
         onRideProgress?.(d);
       }
-      if (d < total) raf.current = requestAnimationFrame(step);
-      else {
-        setRiding(false);
-        onRideProgress?.(null);
-      }
+      if (u < 1) raf.current = requestAnimationFrame(step);
+      else stopRide();
     };
     raf.current = requestAnimationFrame(step);
   };
