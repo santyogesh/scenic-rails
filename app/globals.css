@@ -1,0 +1,30 @@
+:root{--mist:#eef2f0;--ink:#14232e;--rail:#1d5c4a;--lamp:#e0a526;--line:#c9d3cf}
+*{box-sizing:border-box}
+body{margin:0;background:var(--mist);color:var(--ink);font-family:var(--body),Georgia,serif;font-size:18px;line-height:1.55}
+h1,h3,.name{font-family:var(--display),system-ui,sans-serif;letter-spacing:-.02em}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--lamp);outline-offset:2px}
+.home{max-width:760px;margin:0 auto;padding:12vh 24px 64px}
+.home h1{font-size:clamp(2.6rem,8vw,5rem);line-height:1;margin:0 0 20px}
+.lead{max-width:48ch;margin:0 0 48px}
+.list{list-style:none;margin:0;padding:0}
+.list a{display:block;text-decoration:none;padding:24px 0;border-top:2px solid var(--rail)}
+.list a:hover .name{color:var(--rail);text-decoration:underline}
+.name{display:block;font-size:1.8rem;font-weight:700}
+.meta{display:block;font-size:.9rem;opacity:.7}
+.blurb{display:block;margin-top:6px;max-width:56ch}
+.page{height:100dvh;display:flex;flex-direction:column}
+.page header{padding:14px 24px;border-bottom:1px solid var(--line)}
+.page header h1{margin:2px 0;font-size:1.6rem}
+.page header p{margin:0;font-size:.9rem;opacity:.7}
+.journey{flex:1;min-height:0;display:grid;grid-template-columns:380px 1fr}
+.map{grid-column:2;grid-row:1;min-height:300px}
+.sights{grid-column:1;grid-row:1;margin:0;padding:0;list-style:none;overflow:auto;border-right:1px solid var(--line)}
+.sight{all:unset;display:block;box-sizing:border-box;width:100%;cursor:pointer;padding:18px 24px;border-bottom:1px solid var(--line)}
+.sight h3{margin:0 0 4px;font-size:1.15rem}
+.sight p{margin:0;font-size:.95rem}
+.sight.on{background:#fff;box-shadow:inset 5px 0 var(--lamp)}
+.tip{margin-top:8px!important;font-style:italic;color:var(--rail)}
+.pin{width:22px;height:22px;border-radius:50%;border:3px solid var(--ink);background:var(--lamp);cursor:pointer;padding:0}
+.pin.on{transform:scale(1.5);background:#fff}
+@media(max-width:800px){.journey{grid-template-columns:1fr;grid-template-rows:42% 1fr}.map{grid-column:1;grid-row:1}.sights{grid-column:1;grid-row:2;border:0}}
