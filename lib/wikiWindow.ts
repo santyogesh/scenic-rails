@@ -1,6 +1,6 @@
 import type { LL } from "./geo";
 import { locate, Track } from "./side";
-import { kindFromText, WindowItem } from "./window";
+import { kindFromText, maxOffsetKm, pickBalanced, WindowItem } from "./window";
 
 const WIKI = "https://en.wikipedia.org/w/api.php";
 const MAX_OFFSET_KM = 5;
@@ -56,8 +56,8 @@ export async function wikiWindow(track: Track, deadline: number, headers?: Heade
   const found = new Map<number, WindowItem>();
   await pool(samples(track, MAX_STEP_KM), async (p) => {
     const j = await wjson(
-      `generator=geosearch&ggscoord=${p[1]}|${p[0]}&ggsradius=${SEARCH_RADIUS_KM * 1000}&ggslimit=100` +
-        `&prop=description|coordinates|pageimages&colimit=max&piprop=thumbnail&pithumbsize=400&pilimit=50`,
+      `generator=geosearch&ggscoord=${p[1]}|${p[0]}&ggsradius=${SEARCH_RADIUS_KM * 1000}&ggslimit=500` +
+        `&prop=description|coordinates|pageimages&colimit=max&piprop=thumbnail&pithumbsize=400&pilimit=max`,
       headers
     );
     for (const pg of Object.values(j?.query?.pages ?? {}) as any[]) {
@@ -67,7 +67,7 @@ export async function wikiWindow(track: Track, deadline: number, headers?: Heade
       if (!kind) continue;
       const at: LL = [c.lon, c.lat];
       const loc = locate(track, at);
-      if (!loc || loc.offsetKm > MAX_OFFSET_KM) continue;
+      if (!loc || loc.offsetKm > maxOffsetKm(kind)) continue;
       found.set(pg.pageid, {
         id: `wiki:${pg.pageid}`,
         name: pg.title,
@@ -85,13 +85,10 @@ export async function wikiWindow(track: Track, deadline: number, headers?: Heade
     }
   }, deadline);
 
-  // Long routes: keep the most interesting items, then present in travel order.
-  const score = (k: WindowItem) => (k.img ? 2 : 0) + (k.kind === "town" ? -1 : 1) + (k.crossing ? 2 : 0);
-  const cap = Math.max(60, Math.round(track.total / 4));
-  const items = [...found.values()].sort((a, b) => score(b) - score(a)).slice(0, cap);
+  const items = pickBalanced([...found.values()], track.total);
 
   // Summaries for the best items now; the rest are fetched when opened.
-  const top = items.slice(0, SUMMARIES_UP_FRONT);
+  const top = [...items].sort((a, b) => Number(!!b.img) - Number(!!a.img)).slice(0, SUMMARIES_UP_FRONT);
   const batches: WindowItem[][] = [];
   for (let i = 0; i < top.length; i += 20) batches.push(top.slice(i, i + 20));
   await pool(batches, async (b) => {

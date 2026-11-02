@@ -13,6 +13,19 @@ export type Stop = {
   status?: string; // 'departed' | 'current' | 'upcoming'
   delayArrival?: number;
   delayDeparture?: number;
+  /** Reported (passed stops) or expected (upcoming) time, HH:MM IST. */
+  actualArrival?: string;
+  actualDeparture?: string;
+  platform?: string;
+};
+
+/** Per-station running times from a reported live status, matched to stops by station code. */
+export type StopTime = {
+  code: string;
+  actualArrival?: string;
+  actualDeparture?: string;
+  delayArrival?: number;
+  delayDeparture?: number;
   platform?: string;
 };
 
@@ -57,6 +70,99 @@ export type LiveTrainStatus = {
   };
   totalDistance?: number;
 };
+
+const toMin = (t?: string) => {
+  const m = t && /^(\d{1,2}):(\d{2})/.exec(t);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const fromMin = (n: number) => {
+  const d = ((Math.round(n) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(d / 60)).padStart(2, "0")}:${String(d % 60).padStart(2, "0")}`;
+};
+/** Minutes `b` is after `a`, across midnight; assumes the gap is under 12 hours either way. */
+const diffMin = (a: number, b: number) => ((((b - a) % 1440) + 1440 + 720) % 1440) - 720;
+
+export type TimePair = {
+  sch: string;
+  /** Reported or expected time; absent when only the timetable is known. */
+  act?: string;
+  delay?: number;
+  kind: "actual" | "expected" | "scheduled";
+};
+
+function pair(sch: string | undefined, actual: string | undefined, stopDelay: number | undefined, passed: boolean, live?: LiveTrainStatus | null): TimePair | undefined {
+  const s = toMin(sch);
+  if (s === null) return undefined;
+  const kind = passed ? "actual" : "expected";
+  const a = toMin(actual);
+  if (a !== null) return { sch: sch!, act: fromMin(a), delay: stopDelay ?? diffMin(s, a), kind };
+  if (typeof stopDelay === "number") return { sch: sch!, act: fromMin(s + stopDelay), delay: stopDelay, kind };
+  if (!passed && live && !live.estimated && live.status !== "completed") {
+    const d = live.delayMinutes || 0;
+    return { sch: sch!, act: fromMin(s + d), delay: d, kind: "expected" };
+  }
+  return { sch: sch!, kind: "scheduled" };
+}
+
+/** Scheduled vs actual/expected arrival and departure for a stop, with the delay in minutes. */
+export function stopTiming(stop: Stop, live?: LiveTrainStatus | null): { arr?: TimePair; dep?: TimePair } {
+  const passed = stop.status === "departed";
+  return {
+    arr: pair(stop.arrival, stop.actualArrival, stop.delayArrival, passed || (stop.status === "current" && live?.currentLocation?.stationCode === stop.code), live),
+    dep: pair(stop.departure, stop.actualDeparture, stop.delayDeparture, passed, live),
+  };
+}
+
+/** Day of the journey (1-based) and scheduled halt in minutes for each stop, from the timetable rolling past midnight. */
+export function scheduleInfo(stops: Stop[]): { day: number; haltMin?: number }[] {
+  let last = -1, wrap = 0;
+  const roll = (t: number | null) => {
+    if (t === null) return null;
+    if (t + wrap < last) wrap += 1440;
+    last = t + wrap;
+    return last;
+  };
+  return stops.map((s) => {
+    const arr = roll(toMin(s.arrival));
+    const dep = roll(toMin(s.departure));
+    const at = arr ?? dep;
+    return {
+      day: at === null ? Math.floor(wrap / 1440) + 1 : Math.floor(at / 1440) + 1,
+      haltMin: arr !== null && dep !== null ? dep - arr : undefined,
+    };
+  });
+}
+
+/** Mark stops departed / current (next halt) / upcoming from the train's position. */
+export function markStops(stops: Stop[], live: LiveTrainStatus | null | undefined): Stop[] {
+  const km = live?.currentLocation?.distanceFromOriginKm;
+  if (!live || km === undefined) return stops;
+  return stops.map((h) => ({
+    ...h,
+    status:
+      h.distance !== undefined && h.distance < km ? "departed"
+      : h.code && h.code === live.nextHalt?.stationCode ? "current"
+      : "upcoming",
+  }));
+}
+
+/** Apply reported per-station times to the stops. */
+export function mergeStopTimes(stops: Stop[], times: StopTime[] | undefined): Stop[] {
+  if (!times?.length) return stops;
+  const byCode = new Map(times.map((t) => [t.code, t]));
+  return stops.map((s) => {
+    const t = s.code ? byCode.get(s.code) : undefined;
+    if (!t) return s;
+    return {
+      ...s,
+      actualArrival: t.actualArrival ?? s.actualArrival,
+      actualDeparture: t.actualDeparture ?? s.actualDeparture,
+      delayArrival: t.delayArrival ?? s.delayArrival,
+      delayDeparture: t.delayDeparture ?? s.delayDeparture,
+      platform: t.platform ?? s.platform,
+    };
+  });
+}
 
 // Every network call has a timeout so the UI can never hang.
 async function tfetch(u: string, init: RequestInit = {}, ms = 15000) {

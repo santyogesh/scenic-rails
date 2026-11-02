@@ -330,3 +330,67 @@ form>button{min-height:48px;min-width:72px}
 .live-delay-pill.est{background:rgba(148,163,184,.18);color:#cbd5e1;border:1px solid rgba(148,163,184,.4)}
 .live-train-tag .est{color:#94a3b8}
 .live-est-note{font-size:.78rem;color:#9fb0c6;line-height:1.35}
+
+/* Pull down to reload */
+.ptr-indicator{position:fixed;left:50%;top:env(safe-area-inset-top);z-index:60;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(14,20,36,.92);border:1px solid rgba(255,255,255,.18);color:#9fb0c6;box-shadow:0 6px 18px rgba(0,0,0,.4);pointer-events:none}
+.ptr-indicator.ready{color:var(--amber);border-color:var(--amber)}
+.ptr-spin{animation:spin .8s linear infinite}
+
+/* Scheduled vs actual times */
+.stop-chip .stop-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.stop-chip .stop-main .stop-name{flex:none}
+.stop-times{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-family:var(--display),system-ui,sans-serif;font-size:.72rem;color:#9fb0c6;white-space:nowrap}
+.stop-times .t-act{color:var(--ink);font-weight:700}
+.stop-times .t-act.late{color:#fbbf24}
+.stop-times .t-act.ontime{color:#10b981}
+.delay-pill{font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:999px}
+.delay-pill.ontime{background:rgba(16,185,129,.18);color:#10b981}
+.delay-pill.late{background:rgba(245,158,11,.2);color:#fbbf24}
+.delay-pill.early{background:rgba(94,234,212,.16);color:var(--teal)}
+
+/* Full schedule rows in the Stops panel */
+@media(min-width:701px){.stops-strip:not(.closed){width:min(440px,40vw)}}
+.stops-list .stop-chip{align-items:flex-start;flex:none}
+.stops-list .stop-num{margin-top:2px}
+.stop-head{display:flex;align-items:baseline;gap:6px;min-width:0}
+.stop-head .stop-name{flex:0 1 auto}
+.stop-sched{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px}
+.stop-col{display:flex;min-width:0}
+.stop-halt{font-family:var(--display),system-ui,sans-serif;font-size:.72rem;color:#9fb0c6}
+.stop-meta{font-family:var(--display),system-ui,sans-serif;font-size:.7rem;color:#7f8ea3}
+@media(max-width:360px){.stop-sched{flex-direction:column;align-items:flex-start}}
+
+/* Home: links to the written pages */
+.home-links{margin-top:auto;display:flex;flex-wrap:wrap;justify-content:center;gap:6px 18px;font-family:var(--display),system-ui,sans-serif;font-size:.85rem}
+.home-links a{color:#9fb0c6;text-decoration:none}
+.home-links a:hover{color:var(--teal);text-decoration:underline}
+
+/* Written pages: guides, about, privacy. The body never scrolls, so this container does. */
+.doc{position:fixed;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);display:flex;flex-direction:column}
+.doc a{color:var(--teal)}
+.doc-top{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:calc(env(safe-area-inset-top) + 12px) 20px 12px;background:rgba(14,20,36,.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.1);font-family:var(--display),system-ui,sans-serif}
+.doc-top nav{display:flex;gap:18px;font-size:.9rem}
+.doc-top a{text-decoration:none}
+.doc-brand{font-weight:800;font-size:1.1rem;color:var(--ink)!important}
+.doc-main{flex:1;width:100%;max-width:760px;margin:0 auto;padding:28px 20px 48px}
+.doc-article h1{text-align:left;font-size:clamp(2rem,6vw,3rem);line-height:1.1;letter-spacing:-.02em;text-shadow:none;margin:0 0 10px}
+.doc-article h2{font-size:1.4rem;margin:36px 0 10px;color:var(--amber)}
+.doc-article p{font-size:1.1rem;line-height:1.65;margin:0 0 14px;color:#d6dee9}
+.doc-crumbs{font-family:var(--display),system-ui,sans-serif;font-size:.85rem!important;margin-bottom:8px!important}
+.doc-facts{font-family:var(--display),system-ui,sans-serif;font-size:.9rem!important;color:#9fb0c6!important}
+.doc-lede{font-size:1.25rem!important;color:var(--ink)!important}
+.doc-map{margin:24px 0 8px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.12)}
+.doc-map .journey{height:min(70vh,620px)}
+@media(max-width:768px){.doc-map .journey{height:85vh}}
+.doc-sights{margin:0;display:flex;flex-direction:column;gap:14px}
+.doc-sights dt{font-family:var(--display),system-ui,sans-serif;font-weight:700;font-size:1.05rem}
+.doc-sights dd{margin:4px 0 0;line-height:1.6;color:#d6dee9}
+.doc-cards{list-style:none;margin:20px 0 0;padding:0;display:grid;gap:12px}
+.doc-cards a{display:flex;flex-direction:column;gap:4px;padding:16px 18px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--ink);text-decoration:none}
+.doc-cards a:hover{border-color:var(--amber);background:rgba(255,211,122,.08)}
+.doc-cards strong{font-family:var(--display),system-ui,sans-serif;font-size:1.15rem;color:var(--amber)}
+.doc-cards small{font-family:var(--display),system-ui,sans-serif;color:#9fb0c6}
+.site-footer{border-top:1px solid rgba(255,255,255,.1);padding:20px 20px calc(20px + env(safe-area-inset-bottom));text-align:center;font-family:var(--display),system-ui,sans-serif;font-size:.85rem;color:#9fb0c6}
+.site-footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;margin-bottom:10px}
+.site-footer a{text-decoration:none}
+.site-footer p{margin:0}

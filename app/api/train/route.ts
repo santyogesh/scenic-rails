@@ -1,5 +1,5 @@
 import type { LL } from "@/lib/geo";
-import type { LiveTrainStatus, Stop } from "@/lib/rail";
+import { markStops, type LiveTrainStatus, type Stop, type StopTime } from "@/lib/rail";
 import { popularTrains, computeLiveStatusFromSchedule } from "@/data/popularTrains";
 import { erailTrain } from "@/lib/erail";
 import { findStation } from "@/lib/stations";
@@ -66,16 +66,37 @@ function toLiveStatus(d: any, no: string): LiveTrainStatus | null {
   };
 }
 
-/** Mark stops passed / next / upcoming from the (estimated) position. */
-function withStatus(halts: Stop[], live: LiveTrainStatus): Stop[] {
-  const km = live.currentLocation?.distanceFromOriginKm;
-  return halts.map((h) => ({
-    ...h,
-    status:
-      km !== undefined && h.distance !== undefined && h.distance < km ? "departed"
-      : h.code && h.code === live.nextHalt?.stationCode ? "current"
-      : "upcoming",
-  }));
+const withStatus = (halts: Stop[], live: LiveTrainStatus) => markStops(halts, live);
+
+/** A RailRadar time (HH:MM, ISO date-time, or epoch seconds/ms) as HH:MM in IST. */
+function toHHMM(v: unknown): string | undefined {
+  if (typeof v === "string") {
+    const m = /^(\d{1,2}):(\d{2})/.exec(v.trim());
+    if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
+  }
+  const ms = typeof v === "number" ? (v > 1e12 ? v : v > 1e9 ? v * 1000 : NaN) : typeof v === "string" ? Date.parse(v) : NaN;
+  return Number.isFinite(ms) ? new Date(ms + 5.5 * 3600000).toISOString().slice(11, 16) : undefined;
+}
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : undefined);
+
+/** Per-station reported/expected times from RailRadar's live route. Field names aren't documented, so try the likely ones. */
+function liveStopTimes(route: unknown): StopTime[] {
+  if (!Array.isArray(route)) return [];
+  return route
+    .map((st: any): StopTime | null => {
+      const code = st?.stationCode ?? st?.station?.code;
+      if (typeof code !== "string" || !code) return null;
+      return {
+        code,
+        actualArrival: toHHMM(st.actualArrival ?? st.expectedArrival ?? st.arrival?.actual ?? st.arrival?.expected),
+        actualDeparture: toHHMM(st.actualDeparture ?? st.expectedDeparture ?? st.departure?.actual ?? st.departure?.expected),
+        delayArrival: num(st.delayArrival ?? st.arrivalDelay ?? st.arrival?.delay),
+        delayDeparture: num(st.delayDeparture ?? st.departureDelay ?? st.departure?.delay),
+        platform: typeof st.platform === "string" || typeof st.platform === "number" ? String(st.platform) : undefined,
+      };
+    })
+    .filter((t): t is StopTime => Boolean(t));
 }
 
 /** Timetable for estimating the position: erail.in first, then the built-in trains. */
@@ -234,14 +255,16 @@ export async function GET(req: Request) {
   if (sp.get("liveOnly") === "1") {
     if (sp.get("real") === "1") {
       const key = `live_${no}_${startDate ?? ""}`;
-      const cached = getCached<any>(key);
-      if (cached) return Response.json({ liveStatus: cached });
+      const cached = getCached<{ liveStatus: LiveTrainStatus; stopTimes: StopTime[] }>(key);
+      if (cached) return Response.json(cached);
       try {
         const rLive = await fetch(liveUrl, { headers: getHeaders(), signal: AbortSignal.timeout(10000) });
-        const liveStatus = rLive.ok ? toLiveStatus((await rLive.json())?.data, no) : null;
+        const d = rLive.ok ? (await rLive.json())?.data : null;
+        const liveStatus = toLiveStatus(d, no);
         if (liveStatus) {
-          setCache(key, liveStatus, LIVE_CACHE_MS);
-          return Response.json({ liveStatus });
+          const body = { liveStatus, stopTimes: liveStopTimes(d?.route) };
+          setCache(key, body, LIVE_CACHE_MS);
+          return Response.json(body);
         }
       } catch {}
     }
@@ -292,7 +315,7 @@ export async function GET(req: Request) {
       const stops = chosen.map((x) => x.station.name as string).filter(Boolean);
       if (stops.length >= 2) {
         let liveStatus = null;
-        let liveRouteMap = new Map<string, any>();
+        const liveRouteMap = new Map<string, StopTime>();
 
         if (rLive && rLive.ok) {
           try {
@@ -300,12 +323,7 @@ export async function GET(req: Request) {
             const d = jLive?.data;
             if (d) {
               liveStatus = toLiveStatus(d, no);
-
-              if (Array.isArray(d.route)) {
-                d.route.forEach((st: any) => {
-                  if (st.stationCode) liveRouteMap.set(st.stationCode, st);
-                });
-              }
+              for (const t of liveStopTimes(d.route)) liveRouteMap.set(t.code, t);
             }
           } catch {}
         }
@@ -322,10 +340,11 @@ export async function GET(req: Request) {
               departure: x.departure as string | undefined,
               distance: typeof x.distance === "number" ? Math.round(x.distance) : undefined,
               sequence: x.sequence as number | undefined,
-              status: liveInfo?.status as string | undefined,
-              delayArrival: liveInfo?.delayArrival as number | undefined,
-              delayDeparture: liveInfo?.delayDeparture as number | undefined,
-              platform: liveInfo?.platform as string | undefined,
+              delayArrival: liveInfo?.delayArrival,
+              delayDeparture: liveInfo?.delayDeparture,
+              actualArrival: liveInfo?.actualArrival,
+              actualDeparture: liveInfo?.actualDeparture,
+              platform: liveInfo?.platform,
             };
           });
 
@@ -344,7 +363,7 @@ export async function GET(req: Request) {
           ? `${Math.floor(trainInfo.duration / 60)}h ${trainInfo.duration % 60}m`
           : "";
 
-        return Response.json({ stops, stationStops, line, waypoints, title, place, distance, duration, liveStatus });
+        return Response.json({ stops, stationStops: markStops(stationStops, liveStatus), line, waypoints, title, place, distance, duration, liveStatus });
       }
     }
 

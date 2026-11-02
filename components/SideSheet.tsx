@@ -5,6 +5,7 @@ import { photos } from "@/lib/rail";
 import { compass, Relative, relativeTo, Side } from "@/lib/side";
 import { KIND_LABEL, WindowItem } from "@/lib/window";
 import { wikiSummary } from "@/lib/wikiWindow";
+import { useBackClose } from "@/lib/useBackClose";
 import { relLabel } from "./WindowPanel";
 
 const NOW_KM = 15;
@@ -88,18 +89,7 @@ type Props = {
 
 /** Full-screen "What's on your left / right" page. The phone's back button closes it. */
 export default function SideSheet({ side, onSide, onClose, onShowOnMap, items, loading, refKm, trainAt, heading }: Props) {
-  const close = useRef(onClose);
-  close.current = onClose;
-
-  useEffect(() => {
-    history.pushState({ sideSheet: true }, "");
-    const onPop = () => close.current();
-    addEventListener("popstate", onPop);
-    return () => {
-      removeEventListener("popstate", onPop);
-      if (history.state?.sideSheet) history.back();
-    };
-  }, []);
+  useBackClose(true, onClose, "sideSheet");
 
   const rows = useMemo(() => sheetRows(items, refKm, trainAt, heading), [items, refKm, trainAt?.[0], trainAt?.[1], heading]);
   const crossings = rows.filter((x) => x.it.crossing);
@@ -110,7 +100,7 @@ export default function SideSheet({ side, onSide, onClose, onShowOnMap, items, l
 
   return (
     <div className={`sheet ${side}`} role="dialog" aria-modal="true" aria-label={`What's on your ${side}`}>
-      <header className="sheet-head">
+      <header className="sheet-head" data-ptr>
         <button type="button" className="sheet-back" onClick={onClose} aria-label="Back to map">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
@@ -130,7 +120,7 @@ export default function SideSheet({ side, onSide, onClose, onShowOnMap, items, l
           </button>
         ))}
       </div>
-      <div className="sheet-body">
+      <div className="sheet-body" data-ptr>
         {crossings.map((x) => (
           <SheetCard key={x.it.id} row={x} onShowOnMap={onShowOnMap} />
         ))}

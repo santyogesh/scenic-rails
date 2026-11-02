@@ -1,12 +1,14 @@
 "use client";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { track as trackEvent } from "@vercel/analytics";
-import { geocodeStop, traceRail, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
+import { geocodeStop, traceRail, photos, pool, markStops, mergeStopTimes, Stop, Sight, LiveTrainStatus, StopTime } from "@/lib/rail";
+import { useBackClose } from "@/lib/useBackClose";
 import { coarse } from "@/lib/railTrack";
 import { hav } from "@/lib/geo";
 import type { LL } from "@/lib/geo";
-import { locate, makeTrack, orientLine, pointAt } from "@/lib/side";
+import { locate, makeTrack, orientLine, pointAt, segments } from "@/lib/side";
 import { mergeItems, sideText, WindowItem } from "@/lib/window";
 import { wikiSummary, wikiWindow } from "@/lib/wikiWindow";
 import WindowPanel from "@/components/WindowPanel";
@@ -26,6 +28,8 @@ type Result = {
   liveStatus?: LiveTrainStatus | null;
   trainNumber?: string;
   startDate?: string;
+  /** What was searched: a train number or comma-separated stations. */
+  query?: string;
 };
 
 const QUICK_TRAINS = [
@@ -37,6 +41,24 @@ const QUICK_TRAINS = [
 ];
 const LAST_KEY = "scenic:last";
 const LAST_MAX_AGE_MS = 12 * 3600000;
+
+const isTrainNo = (s: string) => /^\d{4,6}$/.test(s);
+
+/** The shareable URL of a journey: /?train=12951&date=2026-11-02 or /?q=Stn1,Stn2 */
+function journeyPath(query: string, date?: string) {
+  return isTrainNo(query) ? `/?train=${query}${date ? `&date=${date}` : ""}` : `/?q=${encodeURIComponent(query)}`;
+}
+
+const resPath = (r: Result | null) => {
+  const query = r?.query ?? r?.trainNumber;
+  return query ? journeyPath(query, r?.startDate) : null;
+};
+
+function urlJourney(): { query: string; date?: string } | null {
+  const sp = new URLSearchParams(location.search);
+  const query = (sp.get("train") ?? sp.get("q") ?? "").trim();
+  return query ? { query, date: sp.get("date") ?? undefined } : null;
+}
 
 /** Today and the 4 previous days in IST, as journey start dates. */
 function startDates(): { value: string; label: string }[] {
@@ -55,22 +77,34 @@ export default function Home() {
   const [winLoading, setWinLoading] = useState(false), [rideKm, setRideKm] = useState<number | null>(null), [manualKm, setManualKm] = useState(0);
   const [focusAt, setFocusAt] = useState<LL | null>(null), [summary, setSummary] = useState<string | null>(null);
   const winReq = useRef(0), railReq = useRef(0), realUntil = useRef(0);
+  /** A restored journey whose live position needs a refresh; and whether this tab pushed the journey's history entry. */
+  const restored = useRef(false), pushedJourney = useRef(false);
   const [tracing, setTracing] = useState(false);
   const [sheet, setSheet] = useState<Side | null>(null);
   const [keepAwake, setKeepAwake] = useState(true), [liveOkAt, setLiveOkAt] = useState(0), [liveFailing, setLiveFailing] = useState(false);
   const [, setTick] = useState(0);
 
-  // Bring back the last journey after a reload or a dropped connection.
+  // Open the journey in the URL (a reload or shared link); otherwise bring back the last one after a dropped connection.
   useEffect(() => {
+    const fromUrl = urlJourney();
+    let saved: { res: Result; at: number } | null = null;
     try {
-      const saved = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
-      if (saved?.res?.line?.length >= 2 && Date.now() - saved.at < LAST_MAX_AGE_MS) {
-        setRes(saved.res);
-        setLiveOkAt(saved.at);
-        if (saved.res.approx?.length && saved.res.stops?.length >= 2) refineTrack(saved.res.stops.map((s: Stop) => s.at), saved.res.line, !saved.res.window?.length);
-        else if (!saved.res.window?.length) loadWindow(saved.res.line);
-      }
+      saved = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
     } catch {}
+    const fresh = saved && saved.res?.line?.length >= 2 && Date.now() - saved.at < LAST_MAX_AGE_MS ? saved : null;
+    const wanted = fromUrl ? journeyPath(fromUrl.query, fromUrl.date) : null;
+    if (fresh && (!wanted || resPath(fresh.res) === wanted)) {
+      setRes(fresh.res);
+      setLiveOkAt(fresh.at);
+      restored.current = true;
+      const path = resPath(fresh.res);
+      if (!wanted && path) history.replaceState(history.state, "", path);
+      if (fresh.res.approx?.length && fresh.res.stops?.length >= 2) refineTrack(fresh.res.stops.map((s: Stop) => s.at), fresh.res.line, !fresh.res.window?.length);
+      else if (!fresh.res.window?.length) loadWindow(fresh.res.line);
+    } else if (fromUrl) {
+      setQ(fromUrl.query);
+      runSearch(fromUrl.query, fromUrl.date, "none");
+    }
   }, []);
 
   useEffect(() => {
@@ -106,7 +140,8 @@ export default function Home() {
   useEffect(() => {
     const d = startDates();
     setDates(d);
-    setStartDate(d[0].value);
+    const urlDate = urlJourney()?.date;
+    setStartDate(d.some((x) => x.value === urlDate) ? urlDate! : d[0].value);
   }, []);
 
   useEffect(() => {
@@ -173,16 +208,28 @@ export default function Home() {
     }
   }
 
-  // Landmarks within 5 km either side. Wikipedia is queried from the browser: Wikimedia rate-limits per client,
-  // so shared server IPs run out quickly. OSM is its own server request since public Overpass servers can be slow.
+  // Landmarks within 5 km either side (10 km for big ones). Wikipedia is queried from the browser: Wikimedia rate-limits per client,
+  // so shared server IPs run out quickly. OSM is split into route segments since public Overpass servers can be slow.
   function loadWindow(line: LL[]) {
     const id = ++winReq.current;
     setWinLoading(true);
-    const server = (sources: string[]) =>
-      fetch("/api/window", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ line, sources }) })
+    const server = (sources: string[], part = line, startKm = 0) =>
+      fetch("/api/window", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ line: part, sources }) })
         .then((r) => (r.ok ? r.json() : { items: [] }))
-        .then((j) => (j.items ?? []) as WindowItem[]);
-    const jobs = [wikiWindow(makeTrack(line), Date.now() + 40000), server(["bharatlas"]), server(["osm"])];
+        .then((j) => ((j.items ?? []) as WindowItem[]).map((it) => ({ ...it, km: Math.round((it.km + startKm) * 10) / 10 })));
+    // At most 3 OSM segments in flight: public Overpass servers turn away bursts from one client.
+    let slots = 3;
+    const waiting: (() => void)[] = [];
+    const limited = <T,>(fn: () => Promise<T>) =>
+      new Promise<void>((r) => (slots > 0 ? (slots--, r()) : waiting.push(r)))
+        .then(fn)
+        .finally(() => { const next = waiting.shift(); next ? next() : slots++; });
+    const track = makeTrack(line);
+    const jobs = [
+      wikiWindow(track, Date.now() + 40000),
+      server(["bharatlas"]),
+      ...segments(track, 120, 2).map((s) => limited(() => server(["osm"], s.line, s.startKm))),
+    ];
     let pending = jobs.length;
     for (const job of jobs) {
       job
@@ -205,6 +252,8 @@ export default function Home() {
     setFocusAt(it.at);
   };
 
+  useBackClose(Boolean(sel), () => setSel(null), "landmark");
+
   useEffect(() => {
     if (!sel) { setPics(null); return; }
     let ok = true; photos(sel).then((p) => ok && setPics(p));
@@ -225,7 +274,14 @@ export default function Home() {
         const j = await r.json();
         if (j.liveStatus) {
           if (real && !j.liveStatus.estimated) realUntil.current = Date.now() + 5 * 60000;
-          setRes((prev) => (prev ? { ...prev, liveStatus: j.liveStatus } : prev));
+          const live: LiveTrainStatus = j.liveStatus;
+          const times: StopTime[] | undefined = Array.isArray(j.stopTimes) ? j.stopTimes : undefined;
+          setRes((prev) => {
+            if (!prev) return prev;
+            const stops = markStops(mergeStopTimes(prev.stops, times), live);
+            // Unchanged stops keep their identity so the map doesn't rebuild station markers (and close their popups).
+            return { ...prev, liveStatus: live, stops: JSON.stringify(stops) === JSON.stringify(prev.stops) ? prev.stops : stops };
+          });
           setLiveOkAt(Date.now());
           setLiveFailing(false);
           return;
@@ -244,10 +300,64 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [res?.trainNumber, res?.liveStatus?.isLive]);
 
-  async function go(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setMsg("Starting…");
+  // A journey restored from storage carries an old position; estimate a fresh one straight away.
+  useEffect(() => {
+    if (!res?.trainNumber || !restored.current) return;
+    restored.current = false;
+    refreshLiveStatus(false);
+  }, [res?.trainNumber]);
+
+  function clearJourney() {
+    winReq.current++;
+    railReq.current++;
+    setTracing(false);
+    setWinLoading(false);
+    setSheet(null);
+    setSel(null);
+    setRes(null);
+    pushedJourney.current = false;
+    try { localStorage.removeItem(LAST_KEY); } catch {}
+  }
+
+  function newSearch() {
+    if (pushedJourney.current) {
+      history.back();
+      return;
+    }
+    clearJourney();
+    history.replaceState(history.state, "", "/");
+  }
+
+  // Back/Forward between the search page and journeys.
+  const onHistory = useRef<() => void>(() => {});
+  onHistory.current = () => {
+    const u = urlJourney();
+    const wanted = u ? journeyPath(u.query, u.date) : null;
+    if (wanted === resPath(res)) return;
+    if (!u) {
+      clearJourney();
+      return;
+    }
+    setQ(u.query);
+    if (u.date && dates.some((d) => d.value === u.date)) setStartDate(u.date);
+    runSearch(u.query, u.date, "none");
+  };
+  useEffect(() => {
+    const onPop = () => onHistory.current();
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, []);
+
+  function go(e: React.FormEvent) {
+    e.preventDefault();
+    runSearch(q.trim(), startDate, "push");
+  }
+
+  /** `historyMode` "push" adds a history entry for the journey; "none" when the URL already names it (load, Back/Forward). */
+  async function runSearch(t: string, date: string | undefined, historyMode: "push" | "none") {
+    setBusy(true); setMsg("Starting…");
+    const startDate = date ?? "";
     try {
-      const t = q.trim();
       let line: LL[] = [];
       let stops: Stop[] = [];
       let title = "";
@@ -294,7 +404,12 @@ export default function Home() {
       winReq.current++;
       railReq.current++;
       setTracing(false);
-      setRes({ line, approx: rough ? [[0, line.length - 1]] : [], stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber ? startDate : undefined });
+      const next: Result = { line, approx: rough ? [[0, line.length - 1]] : [], stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber && startDate ? startDate : undefined, query: t };
+      setRes(next);
+      if (historyMode === "push") {
+        history.pushState(history.state, "", resPath(next));
+        pushedJourney.current = true;
+      }
       setLiveOkAt(Date.now());
       setLiveFailing(false);
       setRideKm(null);
@@ -308,7 +423,8 @@ export default function Home() {
       if (rough) refineTrack(waypoints, line);
       else loadWindow(line);
     } catch (err) {
-      trackEvent("search_failed", { query: q.trim().slice(0, 60) });
+      trackEvent("search_failed", { query: t.slice(0, 60) });
+      if (historyMode === "none" && !res) history.replaceState(history.state, "", "/");
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
       setBusy(false);
     }
@@ -332,7 +448,7 @@ export default function Home() {
         heading={heading}
         trainMoving={trainMoving}
       />
-      <div className="bar glass">
+      <div className="bar glass" data-ptr>
         <div className="bar-text">
           <strong>{res.title.replace(/\s*\(\d+\)$/, "")}</strong>
           <span>
@@ -349,7 +465,7 @@ export default function Home() {
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
         )}
-        <button type="button" className="bar-icon" aria-label="New search" title="New search" onClick={() => { winReq.current++; railReq.current++; setTracing(false); setWinLoading(false); setSheet(null); setRes(null); try { localStorage.removeItem(LAST_KEY); } catch {} }}>
+        <button type="button" className="bar-icon" aria-label="New search" title="New search" onClick={newSearch}>
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
         </button>
       </div>
@@ -402,7 +518,7 @@ export default function Home() {
     </main>
   );
   return (
-    <main className="hero">
+    <main className="hero" data-ptr>
       <Globe />
       <div className="center">
         <h1>Scenic<br />Rails</h1>
@@ -426,6 +542,12 @@ export default function Home() {
           ))}
         </div>
         <p className="status" role="status">{busy && <i className="spin" />}{msg}</p>
+        <nav className="home-links" aria-label="Site">
+          <Link href="/routes">Scenic route guides</Link>
+          <Link href="/about">About</Link>
+          <Link href="/contact">Contact</Link>
+          <Link href="/privacy">Privacy</Link>
+        </nav>
       </div>
     </main>
   );

@@ -5,7 +5,8 @@ import { track as trackEvent } from "@vercel/analytics";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { hav, LL } from "@/lib/geo";
 import { bearing, locate } from "@/lib/side";
-import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
+import { scheduleInfo, stopTiming, type Sight, type Stop, type LiveTrainStatus, type TimePair } from "@/lib/rail";
+import { useBackClose } from "@/lib/useBackClose";
 import type { Route } from "@/data/routes";
 import { headingTransform, TRAIN_MASCOT_SVG } from "./TrainMascot";
 import { createTrain3D, MIN_3D_ZOOM, Train3D } from "./Train3DLayer";
@@ -36,6 +37,28 @@ export type RouteMapProps = {
   /** Index ranges of the line drawn straight because no rail track was matched; shown dashed. */
   approx?: [number, number][];
 };
+
+const delayClass = (d: number) => (d > 0 ? "late" : d < 0 ? "early" : "ontime");
+const delayText = (d: number) => (d > 0 ? `+${d}m` : d < 0 ? `${-d}m early` : "On time");
+
+/** "Sch 10:05  Act 10:17  +12m"; just "Sch 10:05" when only the timetable is known. */
+function StopTimes({ p, label }: { p: TimePair; label?: string }) {
+  return (
+    <span className="stop-times">
+      <span>{label ? `${label} ` : ""}Sch {p.sch}</span>
+      {p.act && <span className={`t-act ${delayClass(p.delay ?? 0)}`}>{p.kind === "actual" ? "Act" : "Exp"} {p.act}</span>}
+      {p.act && p.delay !== undefined && <span className={`delay-pill ${delayClass(p.delay)}`}>{delayText(p.delay)}</span>}
+    </span>
+  );
+}
+
+function timesHtml(label: string, p?: TimePair) {
+  if (!p) return "";
+  const color = (p.delay ?? 0) > 0 ? "#b45309" : "#047857";
+  const act = p.act ? ` · <b style="color:${color}">${p.kind === "actual" ? "Act" : "Exp"} ${p.act}</b>` : "";
+  const delay = p.act && p.delay !== undefined ? ` <span style="color:${color};font-weight:700">(${delayText(p.delay)})</span>` : "";
+  return `<div style="font-size:0.78rem;color:#334155;margin-top:3px"><strong>${label}</strong> Sch ${p.sch}${act}${delay}</div>`;
+}
 
 type Lines = { type: "Feature"; properties: {}; geometry: { type: "MultiLineString"; coordinates: LL[][] } };
 const multi = (parts: LL[][]): Lines => ({ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: parts.filter((p) => p.length >= 2) } });
@@ -103,6 +126,16 @@ export default function RouteMap({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hudOpen, setHudOpen] = useState(false);
   const [stopsOpen, setStopsOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = matchMedia("(max-width: 700px)");
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  // On phones the open stop list is a full-width sheet over the map, so Back closes it.
+  useBackClose(stopsOpen && narrow, () => setStopsOpen(false), "stops");
   const train3d = useRef<Train3D | null>(null);
   const pose = useRef({ at: trainAt, heading, moving: trainMoving });
   pose.current = { at: trainAt, heading, moving: trainMoving };
@@ -302,14 +335,14 @@ export default function RouteMap({
 
       const metaParts: string[] = [];
       if (st.status) metaParts.push(st.status.toUpperCase());
-      if (st.arrival) metaParts.push(`Arr: ${st.arrival}`);
-      if (st.departure) metaParts.push(`Dep: ${st.departure}`);
       if (st.platform) metaParts.push(`Plat: ${st.platform}`);
       if (st.distance !== undefined) metaParts.push(`${st.distance} km`);
+      const tm = stopTiming(st, liveRef.current);
 
       const popup = new maplibregl.Popup({ offset: 14, closeButton: false }).setHTML(
         `<div style="color:#070b14;font-family:system-ui,sans-serif;padding:3px 6px">
           <strong style="font-size:0.92rem;display:block">${st.name}${st.code ? ` (${st.code})` : ""}</strong>
+          ${timesHtml("Arr", tm.arr)}${timesHtml("Dep", tm.dep)}
           ${metaParts.length ? `<div style="font-size:0.78rem;color:#334155;margin-top:3px">${metaParts.join(" • ")}</div>` : ""}
         </div>`
       );
@@ -327,7 +360,7 @@ export default function RouteMap({
         .addTo(m);
       stopMarkers.current.push(marker);
     });
-  }, [stops, line]);
+  }, [stops, line, liveStatus?.delayMinutes, liveStatus?.estimated]);
 
   // 3. Visualise LIVE RUNNING TRAIN on the map
   useEffect(() => {
@@ -621,6 +654,9 @@ export default function RouteMap({
   const isLate = (liveStatus?.delayMinutes || 0) > 0;
   const est = Boolean(liveStatus?.estimated);
   const delayLabel = est ? "Timetable" : isLate ? `+${liveStatus?.delayMinutes}m` : "On time";
+  const sched = useMemo(() => scheduleInfo(stops), [stops]);
+  const nextStop = liveStatus?.nextHalt?.stationCode ? stops.find((s) => s.code === liveStatus.nextHalt!.stationCode) : undefined;
+  const nextTime = nextStop ? stopTiming(nextStop, liveStatus).arr : undefined;
 
   return (
     <>
@@ -679,7 +715,9 @@ export default function RouteMap({
                 <span className="arrow">➔</span>
                 <span>
                   Next: <strong>{liveStatus.nextHalt.stationName}</strong>
-                  {liveStatus.nextHalt.scheduledArrival ? ` (${liveStatus.nextHalt.scheduledArrival})` : ""}
+                  {nextTime ? (
+                    <> · Sch {nextTime.sch}{nextTime.act ? <> · {nextTime.kind === "actual" ? "Act" : "Exp"} <strong>{nextTime.act}</strong>{nextTime.delay !== undefined ? ` (${delayText(nextTime.delay)})` : ""}</> : null}</>
+                  ) : liveStatus.nextHalt.scheduledArrival ? ` (${liveStatus.nextHalt.scheduledArrival})` : ""}
                   {liveStatus.nextHalt.platform ? ` • Plat ${liveStatus.nextHalt.platform}` : ""}
                 </span>
               </div>
@@ -721,7 +759,7 @@ export default function RouteMap({
             <span className="chev">{stopsOpen ? "▾" : "▸"}</span>
           </button>
           {stopsOpen && (
-          <div className="stops-list">
+          <div className="stops-list" data-ptr>
             {stops.map((st, idx) => (
               <button
                 key={`${st.code || st.name}-${idx}`}
@@ -732,8 +770,32 @@ export default function RouteMap({
                 onClick={() => focusStop(st, idx)}
               >
                 <span className="stop-num">{st.status === "departed" ? "✓" : idx + 1}</span>
-                <span className="stop-name">{st.name}</span>
-                {st.code && <small className="stop-code">{st.code}</small>}
+                <span className="stop-main">
+                  <span className="stop-head">
+                    <span className="stop-name">{st.name}</span>
+                    {st.code && <small className="stop-code">{st.code}</small>}
+                  </span>
+                  {(() => {
+                    const tm = stopTiming(st, liveStatus);
+                    const info = sched[idx];
+                    const first = idx === 0, last = idx === stops.length - 1;
+                    const meta = [
+                      info ? `Day ${info.day}` : "",
+                      st.distance !== undefined ? `${st.distance} km` : "",
+                      st.platform ? `PF ${st.platform}` : "",
+                    ].filter(Boolean);
+                    return (
+                      <>
+                        <span className="stop-sched">
+                          <span className="stop-col">{tm.arr ? <StopTimes p={tm.arr} label="Arr" /> : <span className="stop-times">{first ? "Starts" : "Arr —"}</span>}</span>
+                          <span className="stop-col">{tm.dep ? <StopTimes p={tm.dep} label="Dep" /> : <span className="stop-times">{last ? "Ends" : "Dep —"}</span>}</span>
+                          {info?.haltMin !== undefined && info.haltMin > 0 && <span className="stop-halt">Halt {info.haltMin}m</span>}
+                        </span>
+                        {meta.length > 0 && <span className="stop-meta">{meta.join(" · ")}</span>}
+                      </>
+                    );
+                  })()}
+                </span>
               </button>
             ))}
           </div>

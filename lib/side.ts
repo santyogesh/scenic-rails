@@ -25,6 +25,23 @@ export function makeTrack(line: LL[]): Track {
   return { line, cum, total: cum[cum.length - 1] ?? 0 };
 }
 
+/** Split the track into pieces of about `lenKm`, each overlapping the previous one by `overlapKm`. */
+export function segments(track: Track, lenKm: number, overlapKm: number): { line: LL[]; startKm: number }[] {
+  const { line, cum } = track;
+  const out: { line: LL[]; startKm: number }[] = [];
+  let s = 0;
+  while (s < line.length - 1) {
+    let e = s + 1;
+    while (e < line.length - 1 && cum[e] - cum[s] < lenKm) e++;
+    out.push({ line: line.slice(s, e + 1), startKm: cum[s] });
+    if (e >= line.length - 1) break;
+    let next = e;
+    while (next > s + 1 && cum[e] - cum[next - 1] <= overlapKm) next--;
+    s = next;
+  }
+  return out;
+}
+
 /** Nearest point on the track: distance along it, perpendicular offset, and which side (facing travel). */
 export function locate(track: Track, p: LL): TrackPos | null {
   const { line, cum } = track;

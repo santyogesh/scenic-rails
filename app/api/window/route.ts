@@ -1,7 +1,7 @@
 import type { LL } from "@/lib/geo";
 import { hav } from "@/lib/geo";
 import { locate, makeTrack, thin, Track } from "@/lib/side";
-import { kindFromText, WindowItem, WindowKind } from "@/lib/window";
+import { kindFromText, MAX_SEARCH_KM, maxOffsetKm, pickBalanced, WindowItem, WindowKind } from "@/lib/window";
 import { wikiWindow } from "@/lib/wikiWindow";
 import { overpassQuery, tfetch, UA } from "@/lib/overpass";
 
@@ -64,10 +64,12 @@ function samples(track: Track, stepKm: number): LL[] {
 /* ---------------- OpenStreetMap (Overpass) ---------------- */
 
 function osmKind(t: Record<string, string>): WindowKind {
-  if (t.waterway === "river") return "river";
+  if (t.railway === "station" || t.railway === "halt") return "station";
+  if (t.railway === "rail" && t.bridge) return "bridge";
+  if (["river", "canal", "stream"].includes(t.waterway)) return "river";
   if (t.waterway === "waterfall" || t.natural === "waterfall") return "waterfall";
   if (t.waterway === "dam") return "dam";
-  if (t.natural === "water") return "lake";
+  if (t.natural === "water" || t.landuse === "reservoir") return "lake";
   if (t.leisure === "nature_reserve" || t.boundary === "protected_area") return "wildlife";
   if (t.amenity === "place_of_worship") return "worship";
   if (t.bridge) return "bridge";
@@ -94,6 +96,8 @@ function osmText(t: Record<string, string>, kind: WindowKind): string {
     case "wildlife": bits.push(t.protection_title || "Protected nature area"); break;
     case "waterfall": bits.push(`Waterfall${t.height ? `, ${t.height} m drop` : ""}`); break;
     case "bridge": bits.push("Railway bridge"); break;
+    case "station": bits.push(t.railway === "halt" ? "Railway halt" : "Railway station"); break;
+    case "river": bits.push(t.waterway === "canal" ? "Canal" : t.waterway === "stream" ? "Stream" : "River"); break;
     default: bits.push(pretty(t.tourism || t.natural) || "Point of interest");
   }
   if (t.heritage) bits.push("Listed heritage site");
@@ -102,46 +106,59 @@ function osmText(t: Record<string, string>, kind: WindowKind): string {
 
 async function fromOverpass(track: Track, out: Cand[], deadline: number) {
   const qline = thin(track.line, 2);
-  await pool(chunks(qline, 150), 3, async (part) => {
+  await pool(chunks(qline, 60), 2, async (part) => {
     const C = part.map((p) => `${p[1].toFixed(5)},${p[0].toFixed(5)}`).join(",");
     const lats = part.map((p) => p[1]), lngs = part.map((p) => p[0]);
     const bb = [Math.min(...lats) - 0.05, Math.min(...lngs) - 0.05, Math.max(...lats) + 0.05, Math.max(...lngs) + 0.05].map((x) => x.toFixed(4)).join(",");
     const A = `(around:${MAX_OFFSET_KM * 1000},${C})`;
+    const B = `(around:${MAX_SEARCH_KM * 1000},${C})`;
     const q = `[out:json][timeout:25];
 (
- nwr${A}[historic~"^(fort|castle|monument|ruins|memorial|archaeological_site|palace|city_gate|tomb)$"][name];
+ nwr${B}[historic~"^(fort|castle|palace)$"][name];
+ nwr${A}[historic~"^(monument|ruins|memorial|archaeological_site|city_gate|tomb)$"][name];
  nwr${A}[tourism~"^(attraction|viewpoint|museum)$"][name];
- nwr${A}[natural~"^(peak|volcano|waterfall|cliff|beach|bay|cape|valley|gorge)$"][name];
- nwr${A}[waterway~"^(waterfall|dam)$"][name];
- nwr${A}[natural=water][name][wikidata];
- nwr${A}[leisure=nature_reserve][name];
- nwr${A}[boundary=protected_area][name];
- nwr${A}[amenity=place_of_worship][name][wikidata];
+ nwr${B}[natural~"^(peak|volcano|waterfall|cliff|valley|gorge)$"][name];
+ nwr${A}[natural~"^(beach|bay|cape)$"][name];
+ nwr${B}[waterway~"^(waterfall|dam)$"][name];
+ nwr${B}[natural=water][name];
+ nwr${B}[landuse=reservoir][name];
+ nwr${B}[leisure=nature_reserve][name];
+ nwr${B}[boundary=protected_area][name];
+ nwr${A}[amenity=place_of_worship][name];
  node${A}[place~"^(city|town)$"][name];
+ node(around:300,${C})[railway~"^(station|halt)$"][name];
 );
 out center tags;
-way(around:400,${C})[waterway=river][name];
-out tags geom(${bb});
-way(around:150,${C})[railway=rail][bridge][name];
-out center tags;`;
+(
+ way(around:400,${C})[waterway=river][name];
+ way(around:150,${C})[waterway~"^(canal|stream)$"][name];
+ way(around:150,${C})[railway=rail][bridge];
+);
+out tags geom(${bb});`;
     const els = await overpassQuery(q, deadline);
     for (const e of els ?? []) {
       const t = e.tags ?? {};
-      if (!t.name) continue;
-      const name: string = t["name:en"] || t.name;
+      const bridge = t.railway === "rail" && t.bridge;
+      if (!t.name && !bridge) continue;
       let at: LL | null = null;
+      let lengthKm = 0;
       if (Array.isArray(e.geometry) && e.geometry.length) {
-        // River: take the vertex closest to the track (that's where you see it / cross it).
-        let best = Infinity;
+        // Rivers and bridges: take the vertex closest to the track (that's where you see it / cross it).
+        let best = Infinity, prev: LL | null = null;
         for (const g of e.geometry) {
-          if (!g) continue;
+          if (!g) { prev = null; continue; }
           const p: LL = [g.lon, g.lat];
+          if (prev) lengthKm += hav(prev, p);
+          prev = p;
           const loc = locate(track, p);
           if (loc && loc.offsetKm < best) { best = loc.offsetKm; at = p; }
         }
       } else if (typeof e.lat === "number") at = [e.lon, e.lat];
       else if (e.center) at = [e.center.lon, e.center.lat];
       if (!at) continue;
+      // Unnamed bridges: only ones long enough to notice, named by length so they don't merge with each other.
+      if (bridge && !t.name && lengthKm < 0.15) continue;
+      const name: string = t["name:en"] || t.name || t["bridge:name"] || `${Math.round(lengthKm * 1000)} m railway bridge`;
       const kind = osmKind(t);
       out.push({
         key: `osm:${e.type}/${e.id}`,
@@ -234,10 +251,10 @@ function baName(p: any): string | undefined {
 }
 
 async function fromBharatAtlas(track: Track, out: Cand[], deadline: number) {
-  const pts = samples(track, Math.max(25, track.total / 12)).slice(0, 12);
-  const jobs = pts.flatMap((p) => BA_LAYERS.map((l) => ({ p, l }))).slice(0, 48);
-  await pool(jobs, 4, async ({ p, l }) => {
-    const r = await tfetch(`${BHARATLAS}/nearby?lat=${p[1].toFixed(4)}&lng=${p[0].toFixed(4)}&layer=${l.id}&radius_km=${MAX_OFFSET_KM}&limit=10`, {}, 9000);
+  const pts = samples(track, 8);
+  const jobs = pts.flatMap((p) => BA_LAYERS.map((l) => ({ p, l })));
+  await pool(jobs, 6, async ({ p, l }) => {
+    const r = await tfetch(`${BHARATLAS}/nearby?lat=${p[1].toFixed(4)}&lng=${p[0].toFixed(4)}&layer=${l.id}&radius_km=${maxOffsetKm(l.kind)}&limit=25`, {}, 9000);
     if (!r.ok) return;
     const j = await r.json();
     for (const f of j?.features ?? []) {
@@ -264,7 +281,7 @@ function finalize(track: Track, cands: Cand[], wildlife: Map<string, any>): Wind
   for (const c of cands) {
     if (c.pageid && pageSeen.has(c.pageid)) continue;
     const loc = locate(track, c.at);
-    if (!loc || loc.offsetKm > MAX_OFFSET_KM) continue;
+    if (!loc || loc.offsetKm > maxOffsetKm(c.kind)) continue;
     const n = norm(c.name);
     const radius = c.kind === "river" || c.kind === "wildlife" ? 8 : 1.5;
     const dup = n && kept.find((k) => norm(k.name) === n && hav(k.at, c.at) <= radius);
@@ -295,10 +312,7 @@ function finalize(track: Track, cands: Cand[], wildlife: Map<string, any>): Wind
     });
   }
   for (const k of kept) k.crossing = (k.kind === "river" || k.kind === "bridge") && k.offsetKm <= 0.3;
-  // Long routes: keep the most interesting items, then present in travel order.
-  const score = (k: WindowItem) => (k.source === "wikipedia" || k.img ? 2 : 0) + (k.kind === "town" ? -1 : 1) + (k.crossing ? 2 : 0);
-  const cap = Math.max(60, Math.round(track.total / 4));
-  return kept.sort((a, b) => score(b) - score(a)).slice(0, cap).sort((a, b) => a.km - b.km);
+  return pickBalanced(kept, track.total);
 }
 
 export async function POST(req: Request) {
