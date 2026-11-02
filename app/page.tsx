@@ -5,6 +5,7 @@ import { geocodeStop, buildTrack, photos, pool, Stop, Sight, LiveTrainStatus } f
 import type { LL } from "@/lib/geo";
 import { locate, makeTrack, orientLine, pointAt } from "@/lib/side";
 import { mergeItems, sideText, WindowItem } from "@/lib/window";
+import { wikiSummary, wikiWindow } from "@/lib/wikiWindow";
 import WindowPanel from "@/components/WindowPanel";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
@@ -22,8 +23,16 @@ export default function Home() {
   const [q, setQ] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
   const [res, setRes] = useState<Result | null>(null), [sel, setSel] = useState<Sight | WindowItem | null>(null), [pics, setPics] = useState<string[] | null>(null);
   const [winLoading, setWinLoading] = useState(false), [rideKm, setRideKm] = useState<number | null>(null), [manualKm, setManualKm] = useState(0);
-  const [focusAt, setFocusAt] = useState<LL | null>(null);
+  const [focusAt, setFocusAt] = useState<LL | null>(null), [summary, setSummary] = useState<string | null>(null);
   const winReq = useRef(0);
+
+  useEffect(() => {
+    setSummary(null);
+    if (!sel || !("source" in sel) || sel.source !== "wikipedia" || sel.text.length > 160) return;
+    let ok = true;
+    wikiSummary(Number(sel.id.slice(5))).then((t) => ok && setSummary(t));
+    return () => { ok = false; };
+  }, [sel]);
 
   const track = useMemo(() => (res ? makeTrack(res.line) : null), [res?.line]);
   const liveAt = res?.liveStatus?.currentLocation?.at;
@@ -33,17 +42,22 @@ export default function Home() {
   const refSource = rideKm !== null ? "ride" : liveKm !== null ? "live" : "manual";
   const refKm = rideKm ?? liveKm ?? manualKm;
 
-  // Landmarks within 5 km either side. OSM runs as its own request since public Overpass servers can be slow.
+  // Landmarks within 5 km either side. Wikipedia is queried from the browser: Wikimedia rate-limits per client,
+  // so shared server IPs run out quickly. OSM is its own server request since public Overpass servers can be slow.
   function loadWindow(line: LL[]) {
     const id = ++winReq.current;
     setWinLoading(true);
-    let pending = 2;
-    for (const sources of [["wikipedia", "bharatlas"], ["osm"]]) {
+    const server = (sources: string[]) =>
       fetch("/api/window", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ line, sources }) })
         .then((r) => (r.ok ? r.json() : { items: [] }))
-        .then((j) => {
+        .then((j) => (j.items ?? []) as WindowItem[]);
+    const jobs = [wikiWindow(makeTrack(line), Date.now() + 40000), server(["bharatlas"]), server(["osm"])];
+    let pending = jobs.length;
+    for (const job of jobs) {
+      job
+        .then((items) => {
           if (id !== winReq.current) return;
-          setRes((prev) => (prev ? { ...prev, window: mergeItems(prev.window ?? [], j.items ?? []) } : prev));
+          setRes((prev) => (prev ? { ...prev, window: mergeItems(prev.window ?? [], items) } : prev));
         })
         .catch(() => {})
         .finally(() => {
@@ -194,7 +208,7 @@ export default function Home() {
             <div className="gal">{pics === null ? <p>Loading photos…</p> : pics.length ? pics.map((u) => <img key={u} src={u} alt={sel.name} loading="lazy" />) : <p>No photos found nearby.</p>}</div>
             <h2>{sel.name}</h2>
             {"side" in sel && <p className="win-modal-side">{sideText(sel)} · km {Math.round(sel.km)}</p>}
-            <p>{sel.text}</p>
+            <p>{summary ?? sel.text}</p>
             {sel.url && <a href={sel.url} target="_blank" rel="noreferrer">{sel.url.includes("wikipedia") ? "Read on Wikipedia" : "View on OpenStreetMap"}</a>}
           </div>
         </div>
