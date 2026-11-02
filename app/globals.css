@@ -175,9 +175,6 @@ form button:disabled{opacity:.5}
   .win.closed{bottom:196px}
   .win-card img{display:none}
 }
-.live-loco{position:relative;z-index:2;width:40px;height:17px;display:flex;align-items:center;justify-content:center;transition:transform .5s ease;filter:drop-shadow(0 0 6px rgba(16,185,129,.9)) drop-shadow(0 3px 4px rgba(0,0,0,.6))}
-.live-loco svg{display:block}
-.live-train-marker:hover .live-loco svg{transform:scale(1.1)}
 .win-modal-side{color:var(--teal);font-family:var(--display),system-ui,sans-serif;font-size:.85rem;font-weight:700}
 .win-coords{margin:-4px 0 0;font-size:.72rem;color:#9fb0c6;font-variant-numeric:tabular-nums}
 .win-note{margin:0;font-size:.7rem;color:#64748b}
@@ -188,4 +185,35 @@ form button:disabled{opacity:.5}
   form:has(.start-date){flex-wrap:wrap;border-radius:24px}
   form:has(.start-date) input{flex-basis:calc(100% - 90px)}
   .start-date{order:3;width:100%;border-left:0;border-top:1px solid rgba(255,255,255,.1);padding:8px 12px 4px;margin:0}
+}
+
+/* Live train marker: round badge, bobbing loco, blinking headlights, heading arrow */
+.live-train-marker{width:30px;height:30px;z-index:20!important}
+.live-loco{position:relative;z-index:2;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#ef4444,#b91c1c 70%);border:2px solid #fff;box-shadow:0 0 0 3px rgba(200,16,46,.25),0 4px 10px rgba(0,0,0,.55);transition:transform .2s ease}
+.live-loco svg{display:block}
+.live-train-marker.moving .live-loco svg{animation:locoBob .9s ease-in-out infinite}
+.live-train-marker:hover .live-loco{transform:scale(1.12)}
+.loco-hl{animation:locoBlink 1.6s ease-in-out infinite}
+.loco-hl+.loco-hl{animation-delay:.8s}
+@keyframes locoBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+@keyframes locoBlink{0%,100%{opacity:1}50%{opacity:.35}}
+.live-radar-pulse{inset:0;background:rgba(239,68,68,.25);border:1px solid rgba(239,68,68,.8)}
+.live-heading{position:absolute;inset:-9px;z-index:1;opacity:0;transition:transform .5s ease,opacity .3s;pointer-events:none}
+.live-heading i{position:absolute;top:0;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+.live-train-tag{opacity:0;transition:opacity .2s;bottom:calc(100% + 8px)}
+.live-train-marker:hover .live-train-tag{opacity:1}
+@media(prefers-reduced-motion:reduce){.live-loco svg,.loco-hl,.live-radar-pulse{animation:none!important}}
+
+/* Collapsed-by-default panels */
+.chev{font-style:normal;font-size:.8em;opacity:.8;margin-left:auto}
+.live-pulse-badge{all:unset;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--display),system-ui,sans-serif;font-size:.75rem;font-weight:800;letter-spacing:.06em;color:#10b981}
+.live-hud.closed{width:auto;padding:8px 10px;gap:0}
+.stops-strip-title{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:var(--display),system-ui,sans-serif;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);padding:0 4px}
+.stops-strip.closed{bottom:auto;width:auto;padding:9px 12px}
+.win-title span{display:flex;align-items:center;gap:8px}
+.win.closed{width:auto;min-width:220px}
+@media(max-width:700px){
+  .stops-strip.closed{right:auto}
+  .live-hud.closed{left:auto}
+  .win.closed{right:auto}
 }

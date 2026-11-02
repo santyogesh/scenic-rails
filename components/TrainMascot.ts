@@ -1,34 +1,17 @@
-// Original side-profile illustration of an Indian Railways electric locomotive (WAP-7 style livery).
-// Drawn facing east (right); rotate with `mascotTransform`.
+// Front view of an Indian Railways electric loco, drawn for a round map badge.
 export const TRAIN_MASCOT_SVG = `
-<svg class="loco-svg" viewBox="0 0 96 40" width="40" height="17" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <g fill="none" stroke="#1f2937" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M40 9 L48 3 L56 9" />
-    <path d="M44 6 L52 6" />
-  </g>
-  <rect x="34" y="8.5" width="28" height="2.5" rx="1" fill="#475569"/>
-  <path d="M8 12 H80 Q88 12 90 19 L91 27 H6 L6 15 Q6 12 8 12 Z" fill="#c8102e" stroke="#7f1d1d" stroke-width="1"/>
-  <path d="M6 20 H90.4 L90.8 23.5 H6 Z" fill="#fde8c8"/>
-  <path d="M6 24.5 H90.9" stroke="#1e3a8a" stroke-width="1.2"/>
-  <path d="M80.5 13.5 Q86.5 14 88.3 19 H80.5 Z" fill="#0f172a"/>
-  <rect x="9" y="14" width="7" height="5" rx="1" fill="#0f172a"/>
-  <rect x="22" y="14.5" width="5" height="4" rx=".6" fill="#7f1d1d" opacity=".55"/>
-  <rect x="30" y="14.5" width="5" height="4" rx=".6" fill="#7f1d1d" opacity=".55"/>
-  <rect x="38" y="14.5" width="5" height="4" rx=".6" fill="#7f1d1d" opacity=".55"/>
-  <rect x="58" y="14.5" width="5" height="4" rx=".6" fill="#7f1d1d" opacity=".55"/>
-  <rect x="66" y="14.5" width="5" height="4" rx=".6" fill="#7f1d1d" opacity=".55"/>
-  <text x="48" y="23" text-anchor="middle" font-family="system-ui,sans-serif" font-size="3.4" font-weight="800" fill="#c8102e">INDIAN RAILWAYS</text>
-  <circle cx="90" cy="25.5" r="1.3" fill="#fef08a"/>
-  <rect x="4" y="27" width="88" height="3" rx="1" fill="#1f2937"/>
-  <g fill="#111827" stroke="#9ca3af" stroke-width=".8">
-    <circle cx="16" cy="32" r="4"/><circle cx="26" cy="32" r="4"/><circle cx="36" cy="32" r="4"/>
-    <circle cx="60" cy="32" r="4"/><circle cx="70" cy="32" r="4"/><circle cx="80" cy="32" r="4"/>
-  </g>
-  <path d="M2 37 H94" stroke="#64748b" stroke-width="1"/>
+<svg class="loco-svg" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M9 2.6 L12 0.8 L15 2.6" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="5" y="3" width="14" height="14.5" rx="4" fill="#fff"/>
+  <rect x="7" y="5.2" width="10" height="5.6" rx="1.6" fill="#0f172a"/>
+  <path d="M7.6 6.2 L10 6.2 L8.4 9.6 L7.6 9.6 Z" fill="#fff" opacity=".35"/>
+  <rect x="5" y="11.8" width="14" height="1.4" fill="#1e3a8a"/>
+  <circle class="loco-hl" cx="8.4" cy="15" r="1.25" fill="#fde047"/>
+  <circle class="loco-hl" cx="15.6" cy="15" r="1.25" fill="#fde047"/>
+  <path d="M8 17.5 L5.6 21.6 M16 17.5 L18.4 21.6 M4.5 21.6 H19.5 M6.6 19.8 H17.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
 </svg>`;
 
-/** CSS transform so the loco points along `bearing` (deg from north) on a map rotated by `mapBearing`, never upside down. */
-export function mascotTransform(bearing: number, mapBearing = 0): string {
-  const screen = (((bearing - mapBearing) % 360) + 360) % 360;
-  return screen <= 180 ? `rotate(${screen - 90}deg)` : `scaleX(-1) rotate(${270 - screen}deg)`;
+/** CSS rotation for the heading arrow: `bearing` (deg from north) on a map rotated by `mapBearing`. */
+export function headingTransform(bearing: number, mapBearing = 0): string {
+  return `rotate(${(((bearing - mapBearing) % 360) + 360) % 360}deg)`;
 }

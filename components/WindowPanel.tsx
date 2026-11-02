@@ -46,7 +46,7 @@ function Card({ it, r, onPick }: { it: WindowItem; r: Relative; onPick: (it: Win
 export default function WindowPanel({ items, loading, totalKm, refKm, refSource, trainAt, heading, onScrub, onPick, withHud }: Props) {
   const [tab, setTab] = useState<"now" | "all">("now");
   const [filter, setFilter] = useState<"all" | "left" | "right">("all");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [top, setTop] = useState<number | undefined>(undefined);
 
   // Sit directly below the live status panel, whatever its height.
@@ -99,7 +99,7 @@ export default function WindowPanel({ items, loading, totalKm, refKm, refSource,
     >
       <header className="win-head">
         <button type="button" className="win-title" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-          <span>Outside the window</span>
+          <span>Outside the window <em className="chev">{open ? "▾" : "▸"}</em></span>
           <small>
             {loading && !items?.length ? "Scanning 5 km either side…" : `${items?.length ?? 0} landmarks · ${counts.left} left · ${counts.right} right`}
           </small>
