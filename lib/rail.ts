@@ -1,7 +1,15 @@
 import { hav, LL } from "./geo";
 
 export type Sight = { name: string; at: LL; text: string; img?: string; url?: string };
-export type Stop = { name: string; at: LL };
+export type Stop = {
+  name: string;
+  code?: string;
+  at: LL;
+  arrival?: string;
+  departure?: string;
+  distance?: number;
+  sequence?: number;
+};
 
 // Every network call has a timeout so the UI can never hang.
 async function tfetch(u: string, init: RequestInit = {}, ms = 15000) {
@@ -14,12 +22,17 @@ export async function pool<T, R>(items: T[], n: number, fn: (x: T, i: number) =>
   return out;
 }
 
-export async function geocode(name: string): Promise<LL | null> {
+export async function geocodeStop(name: string): Promise<Stop | null> {
   try {
     const r = await tfetch(`/api/train?station=${encodeURIComponent(name)}`, {}, 10000);
     if (!r.ok) return null;
-    return (await r.json()).stop?.at ?? null;
+    return (await r.json()).stop ?? null;
   } catch { return null; }
+}
+
+export async function geocode(name: string): Promise<LL | null> {
+  const s = await geocodeStop(name);
+  return s?.at ?? null;
 }
 
 // Fetch RailRadar GIS rail track geometry between consecutive stops.

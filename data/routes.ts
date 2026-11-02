@@ -1,5 +1,6 @@
+import type { Stop } from "@/lib/rail";
 export type Sight = { name: string; at: [number, number]; text: string; tip?: string; img?: string; url?: string };
-export type Route = { slug: string; name: string; place: string; distance: string; duration: string; blurb: string; line: [number, number][]; sights: Sight[] };
+export type Route = { slug: string; name: string; place: string; distance: string; duration: string; blurb: string; line: [number, number][]; sights: Sight[]; stops?: Stop[] };
 // Coordinates are [lng, lat] and hand-simplified. For exact track geometry, export railway=rail ways from OpenStreetMap (Overpass) and replace `line`.
 export const routes: Route[] = [
   { slug: "konkan", name: "Konkan Railway", place: "Maharashtra to Karnataka, India", distance: "about 740 km", duration: "about 12 hours",

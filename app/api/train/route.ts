@@ -129,6 +129,10 @@ export async function GET(req: Request) {
         name: x.station.name as string,
         code: x.station.code as string,
         at: [x.station.lng, x.station.lat] as LL,
+        arrival: x.arrival as string | undefined,
+        departure: x.departure as string | undefined,
+        distance: typeof x.distance === "number" ? Math.round(x.distance) : undefined,
+        sequence: x.sequence as number | undefined,
       }));
 
     const fallbackLine: LL[] = rawRoute

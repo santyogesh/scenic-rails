@@ -1,12 +1,12 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { geocode, buildTrack, findSights, photos, pool, Stop, Sight } from "@/lib/rail";
+import { geocodeStop, buildTrack, findSights, photos, pool, Stop, Sight } from "@/lib/rail";
 import type { LL } from "@/lib/geo";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
-type Result = { line: LL[]; sights: Sight[]; title: string };
+type Result = { line: LL[]; stops: Stop[]; sights: Sight[]; title: string };
 
 export default function Home() {
   const [q, setQ] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
@@ -25,19 +25,23 @@ export default function Home() {
     try {
       const t = q.trim();
       let line: LL[] = [];
+      let stops: Stop[] = [];
       let title = "";
       let bad = 0;
       if (/^\d{4,6}$/.test(t)) {
         setMsg("Looking up train " + t + " on RailRadar…");
         const r = await fetch("/api/train?no=" + t, { signal: AbortSignal.timeout(20000) }), j = await r.json();
         if (!r.ok) throw new Error(j.error);
+        if (Array.isArray(j.stationStops) && j.stationStops.length >= 2) {
+          stops = j.stationStops;
+        }
         if (Array.isArray(j.line) && j.line.length >= 2) {
           line = j.line;
           title = j.title || `${j.stops[0]} to ${j.stops[j.stops.length - 1]}`;
         } else {
           const list: string[] = j.stops;
-          const at = await pool(list, 4, geocode);
-          const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+          const found = await pool(list, 4, geocodeStop);
+          stops = found.filter((s): s is Stop => Boolean(s));
           if (stops.length < 2) throw new Error("Could not locate those stations.");
           const built = await buildTrack(stops, setMsg);
           line = built.line;
@@ -48,26 +52,38 @@ export default function Home() {
         const list = t.split(",").map((s) => s.trim()).filter(Boolean);
         if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
         setMsg("Locating stations on RailRadar…");
-        const at = await pool(list, 4, geocode);
-        const stops: Stop[] = list.flatMap((name, i) => (at[i] ? [{ name, at: at[i]! }] : []));
+        const found = await pool(list, 4, geocodeStop);
+        stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
         const built = await buildTrack(stops, setMsg);
         line = built.line;
         bad = built.bad;
         title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
       }
-      const sights = await findSights(line, setMsg);
-      setRes({ line, sights, title });
+
+      // First thing: plot all stops & route on the open-source map immediately!
+      setRes({ line, stops, sights: [], title });
+      setBusy(false);
       setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
+
+      // Then discover scenic sights along the track in the background
+      findSights(line, () => {}).then((sights) => {
+        setRes((prev) => (prev ? { ...prev, sights } : prev));
+      }).catch(() => {});
     } catch (err) {
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
-    } finally { setBusy(false); }
+      setBusy(false);
+    }
   }
 
   if (res) return (
     <main className="stage">
-      <RouteMap line={res.line} sights={res.sights} onPick={setSel} />
-      <div className="bar glass"><strong>{res.title}</strong><span>{res.sights.length} scenic spots. Tap a glowing pin.</span><button onClick={() => setRes(null)}>New search</button></div>
+      <RouteMap line={res.line} stops={res.stops} sights={res.sights} onPick={setSel} />
+      <div className="bar glass">
+        <strong>{res.title}</strong>
+        <span>{res.stops.length} stops plotted{res.sights.length ? ` • ${res.sights.length} scenic spots` : ""}. Tap a stop or pin.</span>
+        <button onClick={() => setRes(null)}>New search</button>
+      </div>
       {sel && (
         <div className="scrim" onClick={() => setSel(null)}>
           <div className="modal glass" role="dialog" aria-modal="true" aria-label={sel.name} onClick={(e) => e.stopPropagation()}>
