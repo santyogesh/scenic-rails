@@ -2,7 +2,9 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { track as trackEvent } from "@vercel/analytics";
-import { geocodeStop, buildTrack, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
+import { geocodeStop, traceRail, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
+import { coarse } from "@/lib/railTrack";
+import { hav } from "@/lib/geo";
 import type { LL } from "@/lib/geo";
 import { locate, makeTrack, orientLine, pointAt } from "@/lib/side";
 import { mergeItems, sideText, WindowItem } from "@/lib/window";
@@ -16,6 +18,8 @@ const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
 type Result = {
   line: LL[];
+  /** Index ranges of `line` drawn straight because no rail track was matched. */
+  approx?: [number, number][];
   stops: Stop[];
   window: WindowItem[] | null;
   title: string;
@@ -50,7 +54,8 @@ export default function Home() {
   const [res, setRes] = useState<Result | null>(null), [sel, setSel] = useState<Sight | WindowItem | null>(null), [pics, setPics] = useState<string[] | null>(null);
   const [winLoading, setWinLoading] = useState(false), [rideKm, setRideKm] = useState<number | null>(null), [manualKm, setManualKm] = useState(0);
   const [focusAt, setFocusAt] = useState<LL | null>(null), [summary, setSummary] = useState<string | null>(null);
-  const winReq = useRef(0);
+  const winReq = useRef(0), railReq = useRef(0);
+  const [tracing, setTracing] = useState(false);
   const [sheet, setSheet] = useState<Side | null>(null);
   const [keepAwake, setKeepAwake] = useState(true), [liveOkAt, setLiveOkAt] = useState(0), [liveFailing, setLiveFailing] = useState(false);
   const [, setTick] = useState(0);
@@ -62,7 +67,8 @@ export default function Home() {
       if (saved?.res?.line?.length >= 2 && Date.now() - saved.at < LAST_MAX_AGE_MS) {
         setRes(saved.res);
         setLiveOkAt(saved.at);
-        if (!saved.res.window?.length) loadWindow(saved.res.line);
+        if (saved.res.approx?.length && saved.res.stops?.length >= 2) refineTrack(saved.res.stops.map((s: Stop) => s.at), saved.res.line, !saved.res.window?.length);
+        else if (!saved.res.window?.length) loadWindow(saved.res.line);
       }
     } catch {}
   }, []);
@@ -130,9 +136,33 @@ export default function Home() {
     for (const x of sheetRows(res?.window ?? null, refKm, trainAt, heading)) if (x.now && !x.it.crossing) c[x.side]++;
     return c;
   }, [res?.window, refKm, trainAt?.[0], trainAt?.[1], heading]);
+  const approxKm = useMemo(() => {
+    let km = 0;
+    for (const [a, b] of res?.approx ?? []) for (let i = a + 1; i <= b && i < (res?.line.length ?? 0); i++) km += hav(res!.line[i - 1], res!.line[i]);
+    return Math.round(km);
+  }, [res?.line, res?.approx]);
   const trainMoving =
     refSource === "ride" ||
     (refSource === "live" && res?.liveStatus?.status === "running" && (res.liveStatus.currentLocation?.speedKmh ?? 0) > 0);
+
+  // Swap the coarse line for one traced on real track, then find landmarks along whichever line we ended up with.
+  async function refineTrack(points: LL[], coarseLine: LL[], withWindow = true) {
+    const id = ++railReq.current;
+    setTracing(true);
+    const r = await traceRail(points);
+    if (id !== railReq.current) return;
+    setTracing(false);
+    if (r) {
+      const line = orientLine(r.line, points[0], points[points.length - 1]);
+      const flipped = line !== r.line;
+      const n = line.length - 1;
+      const approx = flipped ? r.approx.map(([a, b]) => [n - b, n - a] as [number, number]) : r.approx;
+      setRes((prev) => (prev ? { ...prev, line, approx } : prev));
+      if (withWindow) loadWindow(line);
+    } else if (withWindow) {
+      loadWindow(coarseLine);
+    }
+  }
 
   // Landmarks within 5 km either side. Wikipedia is queried from the browser: Wikimedia rate-limits per client,
   // so shared server IPs run out quickly. OSM is its own server request since public Overpass servers can be slow.
@@ -208,7 +238,7 @@ export default function Home() {
       let line: LL[] = [];
       let stops: Stop[] = [];
       let title = "";
-      let bad = 0;
+      let waypoints: LL[] = [];
       let liveStatus: LiveTrainStatus | null = null;
       let trainNumber: string | undefined = undefined;
 
@@ -223,15 +253,14 @@ export default function Home() {
         }
         if (Array.isArray(j.line) && j.line.length >= 2) {
           line = j.line;
+          waypoints = Array.isArray(j.waypoints) && j.waypoints.length >= 2 ? j.waypoints : stops.map((s) => s.at);
           title = j.title || `${j.stops[0]} to ${j.stops[j.stops.length - 1]}`;
         } else {
           const list: string[] = j.stops;
           const found = await pool(list, 4, geocodeStop);
           stops = found.filter((s): s is Stop => Boolean(s));
           if (stops.length < 2) throw new Error("Could not locate those stations.");
-          const built = await buildTrack(stops, setMsg);
-          line = built.line;
-          bad = built.bad;
+          line = waypoints = stops.map((s) => s.at);
           title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
         }
       } else {
@@ -241,27 +270,30 @@ export default function Home() {
         const found = await pool(list, 4, geocodeStop);
         stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
-        const built = await buildTrack(stops, setMsg);
-        line = built.line;
-        bad = built.bad;
+        line = waypoints = stops.map((s) => s.at);
         title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
       }
 
       line = orientLine(line, stops[0]?.at, stops[stops.length - 1]?.at);
+      const rough = coarse(line);
 
       // First thing: plot all stops & live train on the open-source map immediately!
-      setRes({ line, stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber ? startDate : undefined });
+      winReq.current++;
+      railReq.current++;
+      setTracing(false);
+      setRes({ line, approx: rough ? [[0, line.length - 1]] : [], stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber ? startDate : undefined });
       setLiveOkAt(Date.now());
       setLiveFailing(false);
       setRideKm(null);
       setManualKm(0);
       setFocusAt(null);
       setBusy(false);
-      setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
+      setMsg("");
       trackEvent("search", { type: trainNumber ? "train" : "stations", train: trainNumber ?? null, live: !!liveStatus?.isLive });
 
-      // Then find what's outside the window along the track in the background
-      loadWindow(line);
+      // Then trace the real track if needed, and find what's outside the window along it, in the background
+      if (rough) refineTrack(waypoints, line);
+      else loadWindow(line);
     } catch (err) {
       trackEvent("search_failed", { query: q.trim().slice(0, 60) });
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
@@ -273,6 +305,7 @@ export default function Home() {
     <main className="stage">
       <RouteMap
         line={res.line}
+        approx={res.approx}
         stops={res.stops}
         sights={res.window ?? []}
         onPick={setSel}
@@ -294,6 +327,7 @@ export default function Home() {
             {res.stops.length} stops
             {res.startDate ? ` · started ${dates.find((d) => d.value === res.startDate)?.label ?? res.startDate}` : ""}
             {res.window?.length ? ` · ${res.window.length} landmarks` : ""}
+            {tracing ? " · tracing the rail track…" : approxKm ? ` · ${approxKm} km drawn approximately (no track data)` : ""}
             {liveFailing && liveOkAt ? ` · last updated ${Math.max(1, Math.round((Date.now() - liveOkAt) / 60000))} min ago` : ""}
           </span>
         </div>
@@ -302,7 +336,7 @@ export default function Home() {
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
         )}
-        <button type="button" className="bar-icon" aria-label="New search" title="New search" onClick={() => { winReq.current++; setWinLoading(false); setSheet(null); setRes(null); try { localStorage.removeItem(LAST_KEY); } catch {} }}>
+        <button type="button" className="bar-icon" aria-label="New search" title="New search" onClick={() => { winReq.current++; railReq.current++; setTracing(false); setWinLoading(false); setSheet(null); setRes(null); try { localStorage.removeItem(LAST_KEY); } catch {} }}>
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
         </button>
       </div>

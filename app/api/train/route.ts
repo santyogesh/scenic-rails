@@ -305,11 +305,11 @@ export async function GET(req: Request) {
             };
           });
 
-        const fallbackLine: LL[] = rawRoute
+        const waypoints: LL[] = rawRoute
           .filter((x) => typeof x?.station?.lng === "number" && typeof x?.station?.lat === "number")
           .map((x) => [x.station.lng, x.station.lat] as LL);
 
-        const line = coords.length >= 2 ? coords : fallbackLine;
+        const line = coords.length >= 2 ? coords : waypoints;
         const trainInfo = j?.data?.train;
         const title = trainInfo?.name
           ? `${trainInfo.name} (${trainInfo.number || no})`
@@ -320,7 +320,7 @@ export async function GET(req: Request) {
           ? `${Math.floor(trainInfo.duration / 60)}h ${trainInfo.duration % 60}m`
           : "";
 
-        return Response.json({ stops, stationStops, line, title, place, distance, duration, liveStatus });
+        return Response.json({ stops, stationStops, line, waypoints, title, place, distance, duration, liveStatus });
       }
     }
 
@@ -349,8 +349,9 @@ export async function GET(req: Request) {
     const distance = `${pTrain.distance} km`;
     const duration = `${Math.floor(pTrain.duration / 60)}h ${pTrain.duration % 60}m`;
     const line = coords.length >= 2 ? coords : pTrain.line;
+    const waypoints = pTrain.halts.map((h) => h.at);
 
-    return Response.json({ stops, stationStops, line, title, place, distance, duration, liveStatus });
+    return Response.json({ stops, stationStops, line, waypoints, title, place, distance, duration, liveStatus });
   } catch {
     const pTrain = popularTrains[no];
     if (!pTrain) return unavailable(no, false);
@@ -360,6 +361,7 @@ export async function GET(req: Request) {
       stops,
       stationStops: pTrain.halts,
       line: pTrain.line,
+      waypoints: pTrain.halts.map((h) => h.at),
       title: `${pTrain.name} (${no})`,
       place: `${stops[0]} to ${stops[stops.length - 1]}`,
       distance: `${pTrain.distance} km`,

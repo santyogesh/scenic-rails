@@ -3,18 +3,13 @@ import { hav } from "@/lib/geo";
 import { locate, makeTrack, thin, Track } from "@/lib/side";
 import { kindFromText, WindowItem, WindowKind } from "@/lib/window";
 import { wikiWindow } from "@/lib/wikiWindow";
+import { overpassQuery, tfetch, UA } from "@/lib/overpass";
 
 export const maxDuration = 60;
 
 const MAX_OFFSET_KM = 5;
 const SOURCE_BUDGET_MS = 32000;
 const OSM_ONLY_BUDGET_MS = 44000;
-const UA = "ScenicRails/1.0 (https://github.com/santyogesh/scenic-rails)";
-const OVERPASS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-];
 const BHARATLAS = "https://bharatlas.com/api/v1";
 const WIKI = "https://en.wikipedia.org/w/api.php";
 
@@ -22,10 +17,6 @@ const cache = new Map<string, { items: WindowItem[]; expiry: number }>();
 let wildlifeInfo: { at: number; byName: Map<string, any> } | null = null;
 
 type Cand = Omit<WindowItem, "km" | "side" | "offsetKm" | "id"> & { key: string; wiki?: string; pageid?: number };
-
-async function tfetch(url: string, init: RequestInit = {}, ms = 12000) {
-  return fetch(url, { ...init, headers: { "User-Agent": UA, ...(init.headers || {}) }, signal: AbortSignal.timeout(ms) });
-}
 
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>, deadline: number) {
   let k = 0;
@@ -107,23 +98,6 @@ function osmText(t: Record<string, string>, kind: WindowKind): string {
   }
   if (t.heritage) bits.push("Listed heritage site");
   return [...new Set(bits)].filter(Boolean).join(". ");
-}
-
-async function overpassQuery(q: string, deadline: number): Promise<any[] | null> {
-  for (let attempt = 0; attempt < OVERPASS.length && Date.now() < deadline - 3000; attempt++) {
-    const url = OVERPASS[(attempt + Math.floor(Math.random() * OVERPASS.length)) % OVERPASS.length];
-    try {
-      const r = await tfetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "data=" + encodeURIComponent(q),
-      }, Math.min(25000, deadline - Date.now()));
-      if (!r.ok) continue;
-      const j = await r.json();
-      if (Array.isArray(j?.elements)) return j.elements;
-    } catch {}
-  }
-  return null;
 }
 
 async function fromOverpass(track: Track, out: Cand[], deadline: number) {

@@ -7,6 +7,7 @@ const WINDOW_MS = 60_000;
 const LIMITS: Record<string, number> = {
   "/api/train": 150,
   "/api/window": 20,
+  "/api/rail": 20,
 };
 const MAX_BODY_BYTES = 512 * 1024;
 const MAX_KEYS = 50_000;
