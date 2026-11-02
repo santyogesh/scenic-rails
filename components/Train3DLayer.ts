@@ -3,8 +3,8 @@ import type { LL } from "@/lib/geo";
 
 export type Train3D = {
   layer: maplibregl.CustomLayerInterface;
-  /** Move the loco to `at`, facing `heading` (degrees from north). Glides from the previous pose. */
-  setPose: (at: LL, heading: number, moving: boolean) => void;
+  /** Move the loco to `at`, facing `heading` (degrees from north). Glides from the previous pose. `glideMs` of 0 places it immediately. */
+  setPose: (at: LL, heading: number, moving: boolean, glideMs?: number) => void;
 };
 
 /** Below this zoom the model is too small to read; the 2D badge is shown instead. */
@@ -109,7 +109,7 @@ export async function createTrain3D(id = "train-3d"): Promise<Train3D> {
     render(_gl, matrix) {
       if (!map || !renderer || !placed || map.getZoom() < MIN_3D_ZOOM) return;
       const now = performance.now();
-      const f = Math.min(1, (now - t0) / glide);
+      const f = glide > 0 ? Math.min(1, (now - t0) / glide) : 1;
       const e = f * f * (3 - 2 * f);
       const x = from.x + (to.x - from.x) * e;
       const y = from.y + (to.y - from.y) * e;
@@ -141,20 +141,22 @@ export async function createTrain3D(id = "train-3d"): Promise<Train3D> {
 
   return {
     layer,
-    setPose(at, heading, isMoving) {
+    setPose(at, heading, isMoving, glideMs?: number) {
       const c = maplibregl.MercatorCoordinate.fromLngLat(at);
       const now = performance.now();
-      if (!placed) {
-        from = to = { x: c.x, y: c.y, h: heading };
+      const snap = glideMs === 0;
+      if (!placed || snap) {
+        const h = placed ? shortest(from.h, heading) : heading;
+        from = to = { x: c.x, y: c.y, h };
         placed = true;
       } else {
-        const f = Math.min(1, (now - t0) / glide);
+        const f = glide > 0 ? Math.min(1, (now - t0) / glide) : 1;
         const e = f * f * (3 - 2 * f);
         from = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, h: from.h + (to.h - from.h) * e };
         to = { x: c.x, y: c.y, h: shortest(from.h, heading) };
       }
-      // Frequent updates (ride, slider) glide quickly; live updates every ~25 s glide over 1.5 s.
-      glide = Math.min(1500, Math.max(120, now - lastPose));
+      // A ride samples every frame and snaps. Slower updates glide: the slider quickly, a live fix over ~1.5 s.
+      glide = snap ? 0 : Math.min(1500, Math.max(120, now - lastPose));
       lastPose = now;
       t0 = now;
       lat = at[1];
