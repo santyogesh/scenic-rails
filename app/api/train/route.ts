@@ -124,6 +124,9 @@ export async function GET(req: Request) {
   const stationQuery = sp.get("station")?.trim();
   const fromQuery = sp.get("from")?.trim();
   const toQuery = sp.get("to")?.trim();
+  if ([stationQuery, fromQuery, toQuery].some((s) => s && s.length > 100)) {
+    return Response.json({ error: "Station name is too long." }, { status: 400 });
+  }
 
   // 1. Station search via RailRadar
   if (stationQuery) {
@@ -160,6 +163,7 @@ export async function GET(req: Request) {
   // 3. Train number lookup + GIS route + Live running status via RailRadar
   const no = (sp.get("no") ?? "").replace(/\D/g, "");
   if (!no) return Response.json({ error: "Enter a train number." }, { status: 400 });
+  if (no.length > 6) return Response.json({ error: "Train numbers have at most 6 digits." }, { status: 400 });
 
   // Journey start date (IST, YYYY-MM-DD); only today and the previous few days are accepted.
   const rawDate = sp.get("date") ?? "";
