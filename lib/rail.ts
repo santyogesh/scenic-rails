@@ -9,6 +9,48 @@ export type Stop = {
   departure?: string;
   distance?: number;
   sequence?: number;
+  status?: string; // 'departed' | 'current' | 'upcoming'
+  delayArrival?: number;
+  delayDeparture?: number;
+  platform?: string;
+};
+
+export type LiveTrainStatus = {
+  trainNumber: string;
+  trainName?: string;
+  status: string; // 'running' | 'at-station' | 'not-started' | 'completed'
+  isLive: boolean;
+  delayMinutes: number;
+  lastUpdatedAt: string;
+  currentLocation?: {
+    stationName?: string;
+    stationCode?: string;
+    status?: string;
+    coordinates?: { lat: number; lng: number };
+    at?: LL;
+    distanceFromOriginKm?: number;
+    delayMinutes?: number;
+    speedKmh?: number;
+    segmentProgress?: number;
+  };
+  previousHalt?: {
+    stationName?: string;
+    stationCode?: string;
+    distance?: number;
+    sequence?: number;
+    departure?: string;
+  };
+  nextHalt?: {
+    stationName?: string;
+    stationCode?: string;
+    distance?: number;
+    sequence?: number;
+    scheduledArrival?: string;
+    expectedArrival?: string;
+    platform?: string;
+    delayArrival?: number;
+  };
+  totalDistance?: number;
 };
 
 // Every network call has a timeout so the UI can never hang.

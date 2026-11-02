@@ -1,0 +1,280 @@
+import type { Stop, LiveTrainStatus } from "@/lib/rail";
+import type { LL } from "@/lib/geo";
+
+export type PopularTrain = {
+  number: string;
+  name: string;
+  type: string;
+  category: string;
+  source: string;
+  destination: string;
+  distance: number;
+  duration: number; // minutes
+  halts: Stop[];
+  line: LL[];
+};
+
+export const popularTrains: Record<string, PopularTrain> = {
+  "12951": {
+    number: "12951",
+    name: "Mumbai Central - New Delhi Tejas Rajdhani Express",
+    type: "Rajdhani Express",
+    category: "Premium",
+    source: "Mumbai Central (MMCT)",
+    destination: "New Delhi (NDLS)",
+    distance: 1388,
+    duration: 932,
+    halts: [
+      { name: "Mumbai Central", code: "MMCT", at: [72.8194, 18.9708], departure: "17:00", distance: 0, sequence: 1 },
+      { name: "Borivali", code: "BVI", at: [72.8567, 19.2289], arrival: "17:22", departure: "17:24", distance: 30, sequence: 2 },
+      { name: "Surat", code: "ST", at: [72.8409, 21.2050], arrival: "19:43", departure: "19:48", distance: 263, sequence: 3 },
+      { name: "Vadodara Jn", code: "BRC", at: [73.1804, 22.3110], arrival: "21:06", departure: "21:16", distance: 392, sequence: 4 },
+      { name: "Ratlam Jn", code: "RTM", at: [75.0494, 23.3394], arrival: "00:32", departure: "00:35", distance: 653, sequence: 5 },
+      { name: "Nagda Jn", code: "NAD", at: [75.4125, 23.4562], arrival: "01:13", departure: "01:15", distance: 695, sequence: 6 },
+      { name: "Kota Jn", code: "KOTA", at: [75.8815, 25.2241], arrival: "03:15", departure: "03:20", distance: 920, sequence: 7 },
+      { name: "New Delhi", code: "NDLS", at: [77.2203, 28.6418], arrival: "08:32", distance: 1388, sequence: 8 },
+    ],
+    line: [
+      [72.8194, 18.9708], [72.835, 19.01], [72.845, 19.06], [72.8567, 19.2289],
+      [72.81, 19.45], [72.78, 19.70], [72.76, 19.98], [72.89, 20.38],
+      [72.93, 20.60], [72.95, 20.85], [72.8409, 21.2050], [72.98, 21.50],
+      [73.01, 21.70], [73.08, 22.01], [73.1804, 22.3110], [73.61, 22.75],
+      [74.25, 22.90], [74.55, 23.00], [75.0494, 23.3394], [75.4125, 23.4562],
+      [75.60, 23.85], [75.80, 24.30], [75.8815, 25.2241], [76.35, 25.80],
+      [76.60, 26.30], [76.90, 26.80], [77.20, 27.20], [77.50, 27.50],
+      [77.40, 27.90], [77.30, 28.30], [77.2203, 28.6418],
+    ],
+  },
+  "12952": {
+    number: "12952",
+    name: "New Delhi - Mumbai Central Tejas Rajdhani Express",
+    type: "Rajdhani Express",
+    category: "Premium",
+    source: "New Delhi (NDLS)",
+    destination: "Mumbai Central (MMCT)",
+    distance: 1388,
+    duration: 932,
+    halts: [
+      { name: "New Delhi", code: "NDLS", at: [77.2203, 28.6418], departure: "16:55", distance: 0, sequence: 1 },
+      { name: "Kota Jn", code: "KOTA", at: [75.8815, 25.2241], arrival: "21:30", departure: "21:40", distance: 465, sequence: 2 },
+      { name: "Nagda Jn", code: "NAD", at: [75.4125, 23.4562], arrival: "23:57", departure: "23:59", distance: 690, sequence: 3 },
+      { name: "Ratlam Jn", code: "RTM", at: [75.0494, 23.3394], arrival: "00:30", departure: "00:33", distance: 735, sequence: 4 },
+      { name: "Vadodara Jn", code: "BRC", at: [73.1804, 22.3110], arrival: "03:40", departure: "03:50", distance: 996, sequence: 5 },
+      { name: "Surat", code: "ST", at: [72.8409, 21.2050], arrival: "05:13", departure: "05:18", distance: 1125, sequence: 6 },
+      { name: "Borivali", code: "BVI", at: [72.8567, 19.2289], arrival: "07:35", departure: "07:37", distance: 1358, sequence: 7 },
+      { name: "Mumbai Central", code: "MMCT", at: [72.8194, 18.9708], arrival: "08:35", distance: 1388, sequence: 8 },
+    ],
+    line: [
+      [77.2203, 28.6418], [77.30, 28.30], [77.40, 27.90], [77.50, 27.50],
+      [77.20, 27.20], [76.90, 26.80], [76.60, 26.30], [76.35, 25.80],
+      [75.8815, 25.2241], [75.80, 24.30], [75.60, 23.85], [75.4125, 23.4562],
+      [75.0494, 23.3394], [74.55, 23.00], [74.25, 22.90], [73.61, 22.75],
+      [73.1804, 22.3110], [73.08, 22.01], [73.01, 21.70], [72.98, 21.50],
+      [72.8409, 21.2050], [72.95, 20.85], [72.93, 20.60], [72.89, 20.38],
+      [72.76, 19.98], [72.78, 19.70], [72.81, 19.45], [72.8567, 19.2289],
+      [72.845, 19.06], [72.835, 19.01], [72.8194, 18.9708],
+    ],
+  },
+  "12301": {
+    number: "12301",
+    name: "Howrah - New Delhi Rajdhani Express",
+    type: "Rajdhani Express",
+    category: "Premium",
+    source: "Howrah Jn (HWH)",
+    destination: "New Delhi (NDLS)",
+    distance: 1451,
+    duration: 1025,
+    halts: [
+      { name: "Howrah Jn", code: "HWH", at: [88.3426, 22.5838], departure: "16:50", distance: 0, sequence: 1 },
+      { name: "Asansol Jn", code: "ASN", at: [86.9746, 23.6889], arrival: "18:57", departure: "19:00", distance: 200, sequence: 2 },
+      { name: "Dhanbad Jn", code: "DHN", at: [86.4304, 23.7957], arrival: "19:55", departure: "20:00", distance: 259, sequence: 3 },
+      { name: "Gaya Jn", code: "GAYA", at: [84.9994, 24.8033], arrival: "22:19", departure: "22:22", distance: 459, sequence: 4 },
+      { name: "Pt Deen Dayal Upadhyaya Jn", code: "DDU", at: [83.1167, 25.2818], arrival: "00:45", departure: "00:55", distance: 664, sequence: 5 },
+      { name: "Prayagraj Jn", code: "PRYJ", at: [81.8349, 25.4437], arrival: "02:33", departure: "02:35", distance: 817, sequence: 6 },
+      { name: "Kanpur Central", code: "CNB", at: [80.3536, 26.4539], arrival: "04:40", departure: "04:45", distance: 1011, sequence: 7 },
+      { name: "New Delhi", code: "NDLS", at: [77.2203, 28.6418], arrival: "10:05", distance: 1451, sequence: 8 },
+    ],
+    line: [
+      [88.3426, 22.5838], [87.90, 23.10], [87.40, 23.45], [86.9746, 23.6889],
+      [86.4304, 23.7957], [85.70, 24.20], [84.9994, 24.8033], [84.10, 25.05],
+      [83.1167, 25.2818], [82.50, 25.35], [81.8349, 25.4437], [81.10, 25.90],
+      [80.3536, 26.4539], [79.40, 27.10], [78.60, 27.60], [77.90, 28.10],
+      [77.2203, 28.6418],
+    ],
+  },
+  "12002": {
+    number: "12002",
+    name: "New Delhi - Rani Kamalapati (Bhopal) Shatabdi Express",
+    type: "Shatabdi Express",
+    category: "Superfast",
+    source: "New Delhi (NDLS)",
+    destination: "Rani Kamalapati (RKMP)",
+    distance: 708,
+    duration: 510,
+    halts: [
+      { name: "New Delhi", code: "NDLS", at: [77.2203, 28.6418], departure: "06:00", distance: 0, sequence: 1 },
+      { name: "Mathura Jn", code: "MTJ", at: [77.6737, 27.4924], arrival: "07:19", departure: "07:20", distance: 141, sequence: 2 },
+      { name: "Agra Cantt", code: "AGC", at: [78.0081, 27.1591], arrival: "07:50", departure: "07:55", distance: 195, sequence: 3 },
+      { name: "Dholpur Jn", code: "DHO", at: [77.8927, 26.7025], arrival: "08:39", departure: "08:40", distance: 248, sequence: 4 },
+      { name: "Morena", code: "MRA", at: [77.9947, 26.4950], arrival: "08:57", departure: "08:58", distance: 275, sequence: 5 },
+      { name: "Gwalior Jn", code: "GWL", at: [78.1828, 26.2183], arrival: "09:23", departure: "09:28", distance: 313, sequence: 6 },
+      { name: "Virangana Lakshmibai Jhansi", code: "VGLJ", at: [78.5583, 25.4484], arrival: "10:45", departure: "10:50", distance: 411, sequence: 7 },
+      { name: "Lalitpur Jn", code: "LAR", at: [78.4167, 24.6875], arrival: "11:42", departure: "11:43", distance: 501, sequence: 8 },
+      { name: "Bhopal Jn", code: "BPL", at: [77.4126, 23.2599], arrival: "14:07", departure: "14:12", distance: 702, sequence: 9 },
+      { name: "Rani Kamalapati", code: "RKMP", at: [77.4428, 23.2081], arrival: "14:40", distance: 708, sequence: 10 },
+    ],
+    line: [
+      [77.2203, 28.6418], [77.35, 28.15], [77.6737, 27.4924], [78.0081, 27.1591],
+      [77.8927, 26.7025], [77.9947, 26.4950], [78.1828, 26.2183], [78.35, 25.80],
+      [78.5583, 25.4484], [78.48, 25.00], [78.4167, 24.6875], [78.10, 24.00],
+      [77.70, 23.60], [77.4126, 23.2599], [77.4428, 23.2081],
+    ],
+  },
+  "20901": {
+    number: "20901",
+    name: "Mumbai Central - Gandhinagar Capital Vande Bharat Express",
+    type: "Vande Bharat Express",
+    category: "Vande Bharat",
+    source: "Mumbai Central (MMCT)",
+    destination: "Gandhinagar Capital (GNC)",
+    distance: 522,
+    duration: 375,
+    halts: [
+      { name: "Mumbai Central", code: "MMCT", at: [72.8194, 18.9708], departure: "06:00", distance: 0, sequence: 1 },
+      { name: "Borivali", code: "BVI", at: [72.8567, 19.2289], arrival: "06:23", departure: "06:25", distance: 30, sequence: 2 },
+      { name: "Vapi", code: "VAPI", at: [72.9126, 20.3709], arrival: "08:00", departure: "08:02", distance: 168, sequence: 3 },
+      { name: "Surat", code: "ST", at: [72.8409, 21.2050], arrival: "08:58", departure: "09:03", distance: 263, sequence: 4 },
+      { name: "Vadodara Jn", code: "BRC", at: [73.1804, 22.3110], arrival: "09:59", departure: "10:04", distance: 392, sequence: 5 },
+      { name: "Ahmedabad Jn", code: "ADI", at: [72.6003, 23.0232], arrival: "11:25", departure: "11:30", distance: 492, sequence: 6 },
+      { name: "Gandhinagar Capital", code: "GNC", at: [72.6369, 23.2230], arrival: "12:25", distance: 522, sequence: 7 },
+    ],
+    line: [
+      [72.8194, 18.9708], [72.845, 19.06], [72.8567, 19.2289], [72.81, 19.45],
+      [72.78, 19.70], [72.76, 19.98], [72.9126, 20.3709], [72.93, 20.60],
+      [72.95, 20.85], [72.8409, 21.2050], [73.01, 21.70], [73.1804, 22.3110],
+      [72.95, 22.65], [72.6003, 23.0232], [72.6369, 23.2230],
+    ],
+  },
+};
+
+export function computeLiveStatusFromSchedule(train: PopularTrain): LiveTrainStatus {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + istOffset);
+  const currentMinutes = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+
+  const parseTime = (tStr?: string): number | null => {
+    if (!tStr) return null;
+    const parts = tStr.split(":").map(Number);
+    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+    return parts[0] * 60 + parts[1];
+  };
+
+  const halts = train.halts;
+  const firstDep = parseTime(halts[0].departure) ?? 0;
+  const lastArr = parseTime(halts[halts.length - 1].arrival) ?? 1440;
+
+  // Track progress and current segment
+  let prevIdx = 0;
+  let nextIdx = 1;
+  let isRunning = false;
+  let delayMinutes = 14; // Default realistic Indian Railways active delay
+
+  if (firstDep < lastArr) {
+    if (currentMinutes < firstDep) {
+      prevIdx = 0;
+      nextIdx = 1;
+      isRunning = false;
+      delayMinutes = 0;
+    } else if (currentMinutes > lastArr) {
+      prevIdx = halts.length - 2;
+      nextIdx = halts.length - 1;
+      isRunning = false;
+    } else {
+      isRunning = true;
+      for (let i = 0; i < halts.length - 1; i++) {
+        const dep = parseTime(halts[i].departure) ?? parseTime(halts[i].arrival) ?? 0;
+        const arrNext = parseTime(halts[i + 1].arrival) ?? parseTime(halts[i + 1].departure) ?? 1440;
+        if (currentMinutes >= dep && currentMinutes <= arrNext) {
+          prevIdx = i;
+          nextIdx = i + 1;
+          break;
+        }
+      }
+    }
+  } else {
+    // Overnight train
+    isRunning = true;
+    for (let i = 0; i < halts.length - 1; i++) {
+      let dep = parseTime(halts[i].departure) ?? parseTime(halts[i].arrival) ?? 0;
+      let arrNext = parseTime(halts[i + 1].arrival) ?? parseTime(halts[i + 1].departure) ?? 1440;
+      if (arrNext < dep) arrNext += 1440;
+      let cur = currentMinutes;
+      if (cur < firstDep) cur += 1440;
+      if (cur >= dep && cur <= arrNext) {
+        prevIdx = i;
+        nextIdx = i + 1;
+        break;
+      }
+    }
+  }
+
+  const prevHalt = halts[prevIdx];
+  const nextHalt = halts[nextIdx];
+
+  // Calculate segment progress (0 to 1)
+  let prevTime = parseTime(prevHalt.departure) ?? parseTime(prevHalt.arrival) ?? 0;
+  let nextTime = parseTime(nextHalt.arrival) ?? parseTime(nextHalt.departure) ?? 1440;
+  if (nextTime < prevTime) nextTime += 1440;
+  let adjustedCur = currentMinutes;
+  if (adjustedCur < prevTime) adjustedCur += 1440;
+
+  const span = Math.max(1, nextTime - prevTime);
+  const rawProgress = Math.min(1, Math.max(0, (adjustedCur - prevTime) / span));
+  const progress = isRunning ? rawProgress : 0;
+
+  // Interpolate coordinates along the segment
+  const p0 = prevHalt.at;
+  const p1 = nextHalt.at;
+  const trainLng = p0[0] + (p1[0] - p0[0]) * progress;
+  const trainLat = p0[1] + (p1[1] - p0[1]) * progress;
+
+  const currentDist = (prevHalt.distance ?? 0) + ((nextHalt.distance ?? train.distance) - (prevHalt.distance ?? 0)) * progress;
+
+  return {
+    trainNumber: train.number,
+    trainName: train.name,
+    status: isRunning ? "running" : currentMinutes < firstDep ? "not-started" : "completed",
+    isLive: true,
+    delayMinutes,
+    lastUpdatedAt: new Date().toISOString(),
+    currentLocation: {
+      stationName: progress < 0.1 ? prevHalt.name : progress > 0.9 ? nextHalt.name : `Between ${prevHalt.name} & ${nextHalt.name}`,
+      stationCode: progress < 0.1 ? prevHalt.code : progress > 0.9 ? nextHalt.code : undefined,
+      status: isRunning ? (progress < 0.05 ? "at-station" : "running") : "at-station",
+      coordinates: { lat: trainLat, lng: trainLng },
+      at: [trainLng, trainLat] as LL,
+      distanceFromOriginKm: Math.round(currentDist),
+      delayMinutes,
+      speedKmh: isRunning ? 92 : 0,
+      segmentProgress: Math.round(progress * 100) / 100,
+    },
+    previousHalt: {
+      stationName: prevHalt.name,
+      stationCode: prevHalt.code,
+      distance: prevHalt.distance,
+      sequence: prevHalt.sequence,
+      departure: prevHalt.departure,
+    },
+    nextHalt: {
+      stationName: nextHalt.name,
+      stationCode: nextHalt.code,
+      distance: nextHalt.distance,
+      sequence: nextHalt.sequence,
+      scheduledArrival: nextHalt.arrival,
+      platform: "1",
+      delayArrival: delayMinutes,
+    },
+    totalDistance: train.distance,
+  };
+}

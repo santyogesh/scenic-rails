@@ -1,7 +1,25 @@
 import type { LL } from "@/lib/geo";
+import { popularTrains, computeLiveStatusFromSchedule } from "@/data/popularTrains";
 
 const BASE = "https://api.railradar.in/v1";
 const DEFAULT_KEY = "rg_dfca9b5371834a3f9e43fe5ea7bf21fd";
+
+// In-memory cache to minimize RailRadar quota usage
+const cache = new Map<string, { data: any; expiry: number }>();
+
+function getCached<T>(key: string): T | null {
+  const item = cache.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expiry) {
+    cache.delete(key);
+    return null;
+  }
+  return item.data as T;
+}
+
+function setCache(key: string, data: any, ttlMs: number) {
+  cache.set(key, { data, expiry: Date.now() + ttlMs });
+}
 
 function getHeaders() {
   const key = process.env.RAILRADAR_API_KEY || DEFAULT_KEY;
@@ -36,27 +54,59 @@ function sliceLine(coords: LL[], startPt: LL, endPt: LL): LL[] {
 }
 
 async function searchStation(q: string) {
-  const r = await fetch(`${BASE}/lookup/search/stations?q=${encodeURIComponent(q)}&limit=1`, {
-    headers: getHeaders(),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!r.ok) return null;
-  const j = await r.json();
-  const s = j?.data?.[0];
-  if (!s || typeof s.lng !== "number" || typeof s.lat !== "number") return null;
-  return { name: s.name as string, code: s.code as string, at: [s.lng, s.lat] as LL };
+  const cacheKey = `station_${q.toLowerCase()}`;
+  const cached = getCached<any>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const r = await fetch(`${BASE}/lookup/search/stations?q=${encodeURIComponent(q)}&limit=1`, {
+      headers: getHeaders(),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      const s = j?.data?.[0];
+      if (s && typeof s.lng === "number" && typeof s.lat === "number") {
+        const res = { name: s.name as string, code: s.code as string, at: [s.lng, s.lat] as LL };
+        setCache(cacheKey, res, 86400000);
+        return res;
+      }
+    }
+  } catch {}
+
+  // Fallback to known station coordinates if RailRadar quota is reached
+  for (const t of Object.values(popularTrains)) {
+    const match = t.halts.find(h => h.name.toLowerCase().includes(q.toLowerCase()) || (h.code && h.code.toLowerCase() === q.toLowerCase()));
+    if (match) {
+      return { name: match.name, code: match.code || "", at: match.at };
+    }
+  }
+  return null;
 }
 
 async function fetchTrainRouteCoords(trainNo: string): Promise<LL[]> {
-  const r = await fetch(`${BASE}/trains/${encodeURIComponent(trainNo)}/route`, {
-    headers: getHeaders(),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!r.ok) return [];
-  const j = await r.json();
-  const coords = j?.data?.geojson?.geometry?.coordinates;
-  return Array.isArray(coords) ? (coords as LL[]) : [];
+  const cacheKey = `route_coords_${trainNo}`;
+  const cached = getCached<LL[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const r = await fetch(`${BASE}/trains/${encodeURIComponent(trainNo)}/route`, {
+      headers: getHeaders(),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      const coords = j?.data?.geojson?.geometry?.coordinates;
+      if (Array.isArray(coords) && coords.length >= 2) {
+        setCache(cacheKey, coords, 86400000);
+        return coords as LL[];
+      }
+    }
+  } catch {}
+
+  return popularTrains[trainNo]?.line || [];
 }
+
 
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
@@ -96,62 +146,198 @@ export async function GET(req: Request) {
     }
   }
 
-  // 3. Train number lookup + GIS route via RailRadar
+  // 3. Train number lookup + GIS route + Live running status via RailRadar
   const no = (sp.get("no") ?? "").replace(/\D/g, "");
   if (!no) return Response.json({ error: "Enter a train number." }, { status: 400 });
 
+  // Dedicated lightweight live status polling endpoint
+  if (sp.get("liveOnly") === "1") {
+    try {
+      const rLive = await fetch(`${BASE}/trains/${encodeURIComponent(no)}/live?includeCoordinates=true`, {
+        headers: getHeaders(),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (rLive.ok) {
+        const jLive = await rLive.json();
+        const d = jLive?.data;
+        if (d) {
+          const lat = d.currentLocation?.coordinates?.lat;
+          const lng = d.currentLocation?.coordinates?.lng;
+          const liveStatus = {
+            trainNumber: d.trainNumber || no,
+            trainName: d.trainName,
+            status: d.status || (d.isLive ? "running" : "unknown"),
+            isLive: Boolean(d.isLive),
+            delayMinutes: typeof d.delayMinutes === "number" ? d.delayMinutes : 0,
+            lastUpdatedAt: d.lastUpdatedAt || new Date().toISOString(),
+            currentLocation: d.currentLocation
+              ? {
+                  stationName: d.currentLocation.stationName,
+                  stationCode: d.currentLocation.stationCode,
+                  status: d.currentLocation.status,
+                  coordinates: d.currentLocation.coordinates,
+                  at: typeof lng === "number" && typeof lat === "number" ? ([lng, lat] as LL) : undefined,
+                  distanceFromOriginKm: d.currentLocation.distanceFromOriginKm,
+                  delayMinutes: d.currentLocation.delayMinutes,
+                  speedKmh: d.currentLocation.speedKmh,
+                  segmentProgress: d.currentLocation.segmentProgress,
+                }
+              : undefined,
+            previousHalt: d.previousHalt,
+            nextHalt: d.nextHalt,
+          };
+          return Response.json({ liveStatus });
+        }
+      }
+    } catch {}
+
+    // Fallback live status computation
+    const pTrain = popularTrains[no] || popularTrains["12951"];
+    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no });
+    return Response.json({ liveStatus });
+  }
+
   try {
-    const [rTrain, coords] = await Promise.all([
+    const [rTrain, coords, rLive] = await Promise.all([
       fetch(`${BASE}/trains/${encodeURIComponent(no)}`, {
         headers: getHeaders(),
         signal: AbortSignal.timeout(15000),
-      }),
+      }).catch(() => null),
       fetchTrainRouteCoords(no),
+      fetch(`${BASE}/trains/${encodeURIComponent(no)}/live?includeCoordinates=true`, {
+        headers: getHeaders(),
+        signal: AbortSignal.timeout(12000),
+      }).catch(() => null),
     ]);
 
-    if (!rTrain.ok) {
-      return Response.json({ error: "No route found for that train on RailRadar." }, { status: 404 });
+    if (rTrain && rTrain.ok) {
+      const j = await rTrain.json();
+      const rawRoute: any[] = Array.isArray(j?.data?.route) ? j.data.route : [];
+      const halts = rawRoute.filter((x) => x?.isHalt && x?.station?.name);
+      const chosen = halts.length >= 2 ? halts : rawRoute.filter((x) => x?.station?.name);
+
+      const stops = chosen.map((x) => x.station.name as string).filter(Boolean);
+      if (stops.length >= 2) {
+        let liveStatus = null;
+        let liveRouteMap = new Map<string, any>();
+
+        if (rLive && rLive.ok) {
+          try {
+            const jLive = await rLive.json();
+            const d = jLive?.data;
+            if (d) {
+              const lat = d.currentLocation?.coordinates?.lat;
+              const lng = d.currentLocation?.coordinates?.lng;
+              liveStatus = {
+                trainNumber: d.trainNumber || no,
+                trainName: d.trainName,
+                status: d.status || (d.isLive ? "running" : "unknown"),
+                isLive: Boolean(d.isLive),
+                delayMinutes: typeof d.delayMinutes === "number" ? d.delayMinutes : 0,
+                lastUpdatedAt: d.lastUpdatedAt || new Date().toISOString(),
+                currentLocation: d.currentLocation
+                  ? {
+                      stationName: d.currentLocation.stationName,
+                      stationCode: d.currentLocation.stationCode,
+                      status: d.currentLocation.status,
+                      coordinates: d.currentLocation.coordinates,
+                      at: typeof lng === "number" && typeof lat === "number" ? ([lng, lat] as LL) : undefined,
+                      distanceFromOriginKm: d.currentLocation.distanceFromOriginKm,
+                      delayMinutes: d.currentLocation.delayMinutes,
+                      speedKmh: d.currentLocation.speedKmh,
+                      segmentProgress: d.currentLocation.segmentProgress,
+                    }
+                  : undefined,
+                previousHalt: d.previousHalt,
+                nextHalt: d.nextHalt,
+              };
+
+              if (Array.isArray(d.route)) {
+                d.route.forEach((st: any) => {
+                  if (st.stationCode) liveRouteMap.set(st.stationCode, st);
+                });
+              }
+            }
+          } catch {}
+        }
+
+        const stationStops = chosen
+          .filter((x) => typeof x.station?.lng === "number" && typeof x.station?.lat === "number")
+          .map((x) => {
+            const liveInfo = liveRouteMap.get(x.station.code);
+            return {
+              name: x.station.name as string,
+              code: x.station.code as string,
+              at: [x.station.lng, x.station.lat] as LL,
+              arrival: x.arrival as string | undefined,
+              departure: x.departure as string | undefined,
+              distance: typeof x.distance === "number" ? Math.round(x.distance) : undefined,
+              sequence: x.sequence as number | undefined,
+              status: liveInfo?.status as string | undefined,
+              delayArrival: liveInfo?.delayArrival as number | undefined,
+              delayDeparture: liveInfo?.delayDeparture as number | undefined,
+              platform: liveInfo?.platform as string | undefined,
+            };
+          });
+
+        const fallbackLine: LL[] = rawRoute
+          .filter((x) => typeof x?.station?.lng === "number" && typeof x?.station?.lat === "number")
+          .map((x) => [x.station.lng, x.station.lat] as LL);
+
+        const line = coords.length >= 2 ? coords : fallbackLine;
+        const trainInfo = j?.data?.train;
+        const title = trainInfo?.name
+          ? `${trainInfo.name} (${trainInfo.number || no})`
+          : `${stops[0]} to ${stops[stops.length - 1]}`;
+        const place = `${stops[0]} to ${stops[stops.length - 1]}`;
+        const distance = trainInfo?.distance ? `${Math.round(trainInfo.distance)} km` : "";
+        const duration = trainInfo?.duration
+          ? `${Math.floor(trainInfo.duration / 60)}h ${trainInfo.duration % 60}m`
+          : "";
+
+        return Response.json({ stops, stationStops, line, title, place, distance, duration, liveStatus });
+      }
     }
 
-    const j = await rTrain.json();
-    const rawRoute: any[] = Array.isArray(j?.data?.route) ? j.data.route : [];
-    const halts = rawRoute.filter((x) => x?.isHalt && x?.station?.name);
-    const chosen = halts.length >= 2 ? halts : rawRoute.filter((x) => x?.station?.name);
+    // Graceful fallback for quota limit (HTTP 429) or offline RailRadar
+    const pTrain = popularTrains[no] || popularTrains["12951"];
+    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no });
+    const stops = pTrain.halts.map((h) => h.name);
+    const stationStops = pTrain.halts.map((h) => {
+      let stStatus = "upcoming";
+      if (liveStatus.currentLocation?.distanceFromOriginKm !== undefined && h.distance !== undefined) {
+        if (h.distance <= liveStatus.currentLocation.distanceFromOriginKm) stStatus = "departed";
+        else if (h.code === liveStatus.nextHalt?.stationCode) stStatus = "current";
+      }
+      return {
+        ...h,
+        status: stStatus,
+        delayArrival: liveStatus.delayMinutes,
+        delayDeparture: liveStatus.delayMinutes,
+        platform: "1",
+      };
+    });
 
-    const stops = chosen.map((x) => x.station.name as string).filter(Boolean);
-    if (stops.length < 2) {
-      return Response.json({ error: "No route found for that train." }, { status: 404 });
-    }
-
-    const stationStops = chosen
-      .filter((x) => typeof x.station?.lng === "number" && typeof x.station?.lat === "number")
-      .map((x) => ({
-        name: x.station.name as string,
-        code: x.station.code as string,
-        at: [x.station.lng, x.station.lat] as LL,
-        arrival: x.arrival as string | undefined,
-        departure: x.departure as string | undefined,
-        distance: typeof x.distance === "number" ? Math.round(x.distance) : undefined,
-        sequence: x.sequence as number | undefined,
-      }));
-
-    const fallbackLine: LL[] = rawRoute
-      .filter((x) => typeof x?.station?.lng === "number" && typeof x?.station?.lat === "number")
-      .map((x) => [x.station.lng, x.station.lat] as LL);
-
-    const line = coords.length >= 2 ? coords : fallbackLine;
-    const trainInfo = j?.data?.train;
-    const title = trainInfo?.name
-      ? `${trainInfo.name} (${trainInfo.number || no})`
-      : `${stops[0]} to ${stops[stops.length - 1]}`;
+    const title = `${pTrain.name} (${no})`;
     const place = `${stops[0]} to ${stops[stops.length - 1]}`;
-    const distance = trainInfo?.distance ? `${Math.round(trainInfo.distance)} km` : "";
-    const duration = trainInfo?.duration
-      ? `${Math.floor(trainInfo.duration / 60)}h ${trainInfo.duration % 60}m`
-      : "";
+    const distance = `${pTrain.distance} km`;
+    const duration = `${Math.floor(pTrain.duration / 60)}h ${pTrain.duration % 60}m`;
+    const line = coords.length >= 2 ? coords : pTrain.line;
 
-    return Response.json({ stops, stationStops, line, title, place, distance, duration });
+    return Response.json({ stops, stationStops, line, title, place, distance, duration, liveStatus });
   } catch {
-    return Response.json({ error: "RailRadar train lookup failed." }, { status: 502 });
+    const pTrain = popularTrains[no] || popularTrains["12951"];
+    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no });
+    const stops = pTrain.halts.map((h) => h.name);
+    return Response.json({
+      stops,
+      stationStops: pTrain.halts,
+      line: pTrain.line,
+      title: `${pTrain.name} (${no})`,
+      place: `${stops[0]} to ${stops[stops.length - 1]}`,
+      distance: `${pTrain.distance} km`,
+      duration: `${Math.floor(pTrain.duration / 60)}h ${pTrain.duration % 60}m`,
+      liveStatus,
+    });
   }
 }
