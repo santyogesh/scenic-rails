@@ -4,7 +4,7 @@ export async function GET(req: Request) {
   const key = process.env.RAPIDAPI_KEY;
   if (!no) return Response.json({ error: "Enter a train number." }, { status: 400 });
   if (!key) return Response.json({ error: "Train-number lookup needs RAPIDAPI_KEY. You can type the stations instead." }, { status: 501 });
-  const r = await fetch(`https://irctc1.p.rapidapi.com/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": key, "x-rapidapi-host": "irctc1.p.rapidapi.com" } });
+  const r = await fetch(`https://irctc1.p.rapidapi.com/api/v1/getTrainSchedule?trainNo=${no}`, { headers: { "x-rapidapi-key": key, "x-rapidapi-host": "irctc1.p.rapidapi.com" }, signal: AbortSignal.timeout(15000) });
   if (!r.ok) return Response.json({ error: "Train lookup failed." }, { status: 502 });
   const j = await r.json();
   const rows: any[] = Array.isArray(j?.data?.route) ? j.data.route : Array.isArray(j?.data) ? j.data : [];
