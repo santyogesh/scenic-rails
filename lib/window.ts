@@ -81,6 +81,49 @@ export function kindFromText(s: string): WindowKind | null {
   return null;
 }
 
+/** Landmark kind from OpenStreetMap tags. */
+export function osmKind(t: Record<string, string>): WindowKind {
+  if (t.railway === "station" || t.railway === "halt") return "station";
+  if (t.railway === "rail" && t.bridge) return "bridge";
+  if (["river", "canal", "stream"].includes(t.waterway)) return "river";
+  if (t.waterway === "waterfall" || t.natural === "waterfall") return "waterfall";
+  if (t.waterway === "dam") return "dam";
+  if (t.natural === "water" || t.landuse === "reservoir") return "lake";
+  if (t.leisure === "nature_reserve" || t.boundary === "protected_area") return "wildlife";
+  if (t.amenity === "place_of_worship") return "worship";
+  if (t.bridge) return "bridge";
+  if (t.place) return "town";
+  if (["peak", "volcano", "cliff", "valley", "gorge", "ridge", "hill"].includes(t.natural)) return "hill";
+  if (["beach", "bay", "cape"].includes(t.natural)) return "beach";
+  if (["fort", "castle", "palace", "city_gate"].includes(t.historic)) return "fort";
+  if (t.historic || t.tourism === "museum") return "heritage";
+  return kindFromText(`${t.name} ${t.description || ""}`) ?? "sight";
+}
+
+/** Short description of an OpenStreetMap feature from its tags. */
+export function osmText(t: Record<string, string>, kind: WindowKind): string {
+  const bits: string[] = [];
+  const pretty = (s?: string) => (s ? s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "");
+  if (t.description) bits.push(t.description);
+  switch (kind) {
+    case "hill": bits.push(`${pretty(t.natural) || "Hill"}${t.ele ? `, ${Math.round(Number(t.ele)).toLocaleString("en-IN")} m high` : ""}`); break;
+    case "town": bits.push(`${pretty(t.place)}${t.population ? ` of about ${Number(t.population).toLocaleString("en-IN")} people` : ""}`); break;
+    case "worship": bits.push(`${t.religion ? pretty(t.religion) + " " : ""}place of worship`); break;
+    case "fort":
+    case "heritage": bits.push(`${pretty(t.historic || t.tourism) || "Historic site"}${t.start_date ? `, dating from ${t.start_date}` : ""}`); break;
+    case "dam": bits.push("Dam"); break;
+    case "lake": bits.push(pretty(t.water) || "Lake"); break;
+    case "wildlife": bits.push(t.protection_title || "Protected nature area"); break;
+    case "waterfall": bits.push(`Waterfall${t.height ? `, ${t.height} m drop` : ""}`); break;
+    case "bridge": bits.push("Railway bridge"); break;
+    case "station": bits.push(t.railway === "halt" ? "Railway halt" : "Railway station"); break;
+    case "river": bits.push(t.waterway === "canal" ? "Canal" : t.waterway === "stream" ? "Stream" : "River"); break;
+    default: bits.push(pretty(t.tourism || t.natural) || "Point of interest");
+  }
+  if (t.heritage) bits.push("Listed heritage site");
+  return [...new Set(bits)].filter(Boolean).join(". ");
+}
+
 const normName = (s: string) =>
   s.toLowerCase().replace(/\(.*?\)|,.*$/g, "").replace(/\b(river|nadi|lake|dam|fort|temple|the)\b/g, "").replace(/[^a-z0-9]/g, "");
 

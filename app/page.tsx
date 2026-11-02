@@ -465,6 +465,9 @@ export default function Home() {
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
         )}
+        <Link href="/look" className="bar-icon" aria-label="Look around with camera" title="Look around with camera">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
+        </Link>
         <button type="button" className="bar-icon" aria-label="New search" title="New search" onClick={newSearch}>
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
         </button>
@@ -541,6 +544,7 @@ export default function Home() {
             </button>
           ))}
         </div>
+        <Link href="/look" className="look-entry">Look around with camera</Link>
         <p className="status" role="status">{busy && <i className="spin" />}{msg}</p>
         <nav className="home-links" aria-label="Site">
           <Link href="/routes">Scenic route guides</Link>

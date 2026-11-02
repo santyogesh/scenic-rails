@@ -22,7 +22,7 @@ async function pool<T>(items: T[], fn: (x: T) => Promise<void>, deadline: number
   );
 }
 
-async function wjson(params: string, headers?: HeadersInit, retry = true): Promise<any> {
+export async function wjson(params: string, headers?: HeadersInit, retry = true): Promise<any> {
   const r = await fetch(`${WIKI}?action=query&format=json&origin=*&${params}`, { headers, signal: AbortSignal.timeout(10000) });
   if (r.status === 429 && retry) {
     const wait = Math.min(15, Number(r.headers.get("retry-after")) || 5);
