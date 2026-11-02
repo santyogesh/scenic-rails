@@ -21,7 +21,7 @@ type Props = {
   withHud?: boolean;
 };
 
-function relLabel(r: Relative): string {
+export function relLabel(r: Relative): string {
   const d = r.distKm < 10 ? r.distKm.toFixed(1) : Math.round(r.distKm).toString();
   if (r.distKm < 0.3) return `Right beside you, ${r.side}`;
   const a = Math.abs(r.rel);

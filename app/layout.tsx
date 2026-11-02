@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Newsreader } from "next/font/google";
 import "./globals.css";
 const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--display" });
@@ -11,6 +11,7 @@ export const metadata: Metadata = {
     description: "Train routes mapped with the sights worth looking up for.",
   },
 };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#070b14" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (<html lang="en" className={`${display.variable} ${body.variable}`}><body>{children}</body></html>);
 }

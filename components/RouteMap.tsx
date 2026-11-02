@@ -6,6 +6,10 @@ import { hav, LL } from "@/lib/geo";
 import type { Sight, Stop, LiveTrainStatus } from "@/lib/rail";
 import type { Route } from "@/data/routes";
 import { headingTransform, TRAIN_MASCOT_SVG } from "./TrainMascot";
+import { createTrain3D, MIN_3D_ZOOM, Train3D } from "./Train3DLayer";
+
+/** Camera turned this many degrees off the track so the loco is seen three-quarter on, not end-on. */
+const VIEW_ANGLE = 30;
 
 export type RouteMapProps = {
   line?: LL[];
@@ -23,6 +27,10 @@ export type RouteMapProps = {
   /** Called with km travelled during "Ride the route", and null when the ride ends. */
   onRideProgress?: (km: number | null) => void;
   focusAt?: LL | null;
+  /** Where the train is (live, else the ride/slider position) and its heading; the map opens here, zoomed in. */
+  trainAt?: LL | null;
+  heading?: number;
+  trainMoving?: boolean;
 };
 
 export default function RouteMap({
@@ -39,6 +47,9 @@ export default function RouteMap({
   liveBearing,
   onRideProgress,
   focusAt,
+  trainAt,
+  heading = 0,
+  trainMoving = false,
 }: RouteMapProps) {
   const rawLine = propLine ?? route?.line ?? [];
   const line = useMemo(() => {
@@ -65,17 +76,25 @@ export default function RouteMap({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hudOpen, setHudOpen] = useState(false);
   const [stopsOpen, setStopsOpen] = useState(false);
+  const train3d = useRef<Train3D | null>(null);
+  const pose = useRef({ at: trainAt, heading, moving: trainMoving });
+  pose.current = { at: trainAt, heading, moving: trainMoving };
+  const bounds = useMemo(
+    () => (line.length ? line.reduce((a, c) => a.extend(c), new maplibregl.LngLatBounds(line[0], line[0])) : null),
+    [line]
+  );
 
   // 1. Initialize OpenStreetMap map & draw rail track
   useEffect(() => {
     if (!box.current || line.length < 2) return;
-    const b = line.reduce((a, c) => a.extend(c), new maplibregl.LngLatBounds(line[0], line[0]));
+    const b = bounds!;
     const m = new maplibregl.Map({
       container: box.current,
-      center: line[0],
+      center: pose.current.at ?? line[0],
       zoom: 5,
       pitch: 30,
       maxPitch: 75,
+      pixelRatio: Math.min(devicePixelRatio, 2),
       style: {
         version: 8,
         sources: {
@@ -105,12 +124,22 @@ export default function RouteMap({
       },
     });
     map.current = m;
-    m.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+    if (matchMedia("(min-width: 701px)").matches) m.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+
+    // Open zoomed in on the train, looking along the track; fall back to the whole route.
+    const openView = () => {
+      const { at, heading: h } = pose.current;
+      if (at) m.jumpTo({ center: at, zoom: 14, pitch: 60, bearing: h - VIEW_ANGLE });
+      else m.fitBounds(b, { padding: 80, maxZoom: 12, duration: 0 });
+    };
+    const toggle3d = () => box.current?.classList.toggle("z3d", m.getZoom() >= MIN_3D_ZOOM);
+    m.on("zoom", toggle3d);
 
     const drawRoute = () => {
       if (!map.current || line.length < 2) return;
       m.resize();
-      m.fitBounds(b, { padding: 80, maxZoom: 12, duration: 0 });
+      openView();
+      toggle3d();
       if (m.getSource("r")) return;
 
       const feat = (c: LL[]) => ({
@@ -155,14 +184,21 @@ export default function RouteMap({
         if (t < 1) animRaf.current = requestAnimationFrame(tick);
       };
       animRaf.current = requestAnimationFrame(tick);
+
+      createTrain3D()
+        .then((t) => {
+          if (map.current !== m) return;
+          m.addLayer(t.layer);
+          train3d.current = t;
+          const p = pose.current;
+          if (p.at) t.setPose(p.at, p.heading, p.moving);
+        })
+        .catch(() => {});
     };
 
     m.on("load", drawRoute);
     const resizeTimer = setTimeout(() => {
-      if (map.current) {
-        map.current.resize();
-        map.current.fitBounds(b, { padding: 80, maxZoom: 12, duration: 0 });
-      }
+      map.current?.resize();
     }, 150);
 
     return () => {
@@ -178,10 +214,15 @@ export default function RouteMap({
         liveMarker.current.remove();
         liveMarker.current = null;
       }
+      train3d.current = null;
       m.remove();
       map.current = null;
     };
   }, [line]);
+
+  useEffect(() => {
+    if (trainAt) train3d.current?.setPose(trainAt, heading, trainMoving);
+  }, [trainAt?.[0], trainAt?.[1], heading, trainMoving]);
 
   // 2. Plot ALL train stops on the open-source map
   useEffect(() => {
@@ -369,10 +410,15 @@ export default function RouteMap({
   }, [active, sights]);
 
   const focusLiveTrain = () => {
-    if (map.current && liveStatus?.currentLocation?.at) {
-      map.current.flyTo({ center: liveStatus.currentLocation.at, zoom: 11, pitch: 45, speed: 1.4 });
-      liveMarker.current?.togglePopup();
-    }
+    const at = trainAt ?? liveStatus?.currentLocation?.at;
+    if (map.current && at) map.current.flyTo({ center: at, zoom: 14, pitch: 60, bearing: heading - VIEW_ANGLE, speed: 1.4 });
+  };
+
+  const wholeRoute = () => {
+    const m = map.current;
+    if (!m || !bounds) return;
+    m.jumpTo({ pitch: 0, bearing: 0 });
+    m.fitBounds(bounds, { padding: 60, maxZoom: 12 });
   };
 
   const handleRefresh = async () => {
@@ -561,9 +607,21 @@ export default function RouteMap({
         </div>
       )}
 
-      <button className="ride" onClick={ride}>
-        {riding ? "Stop" : "Ride the route"}
-      </button>
+      <div className="map-fabs">
+        <button type="button" className="fab" onClick={focusLiveTrain} aria-label="Go to the train" title="Go to the train">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+        </button>
+        <button type="button" className="fab" onClick={wholeRoute} aria-label="Show whole route" title="Whole route">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+        <button type="button" className={`fab ${riding ? "on" : ""}`} onClick={ride} aria-label={riding ? "Stop the ride" : "Ride the route"} title={riding ? "Stop" : "Ride the route"}>
+          {riding ? (
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor" /></svg>
+          )}
+        </button>
+      </div>
     </>
   );
 }
