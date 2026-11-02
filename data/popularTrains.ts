@@ -157,12 +157,12 @@ export const popularTrains: Record<string, PopularTrain> = {
   },
 };
 
-export function computeLiveStatusFromSchedule(train: PopularTrain): LiveTrainStatus {
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const ist = new Date(now.getTime() + istOffset);
-  const currentMinutes = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+/** Minutes since 00:00 IST on `date` (YYYY-MM-DD). */
+function minutesSince(date: string): number {
+  return (Date.now() - Date.parse(`${date}T00:00:00+05:30`)) / 60000;
+}
 
+export function computeLiveStatusFromSchedule(train: PopularTrain, startDate?: string): LiveTrainStatus {
   const parseTime = (tStr?: string): number | null => {
     if (!tStr) return null;
     const parts = tStr.split(":").map(Number);
@@ -171,49 +171,54 @@ export function computeLiveStatusFromSchedule(train: PopularTrain): LiveTrainSta
   };
 
   const halts = train.halts;
-  const firstDep = parseTime(halts[0].departure) ?? 0;
-  const lastArr = parseTime(halts[halts.length - 1].arrival) ?? 1440;
 
-  // Track progress and current segment
+  // Arrival/departure in minutes from 00:00 of the start day, rolling past midnight.
+  let last = -1, wrap = 0;
+  const roll = (t: number | null) => {
+    if (t === null) return null;
+    if (t + wrap < last) wrap += 1440;
+    last = t + wrap;
+    return last;
+  };
+  const times = halts.map((h) => {
+    const arr = roll(parseTime(h.arrival));
+    const dep = roll(parseTime(h.departure));
+    return { arr: arr ?? dep ?? 0, dep: dep ?? arr ?? 0 };
+  });
+  const firstDep = times[0].dep;
+  const lastArr = times[times.length - 1].arr;
+
+  const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+  let elapsed = minutesSince(startDate ?? today);
+  // Without an explicit date, prefer yesterday's run if it is still on the move.
+  if (!startDate && elapsed < firstDep && elapsed + 1440 <= lastArr) elapsed += 1440;
+
   let prevIdx = 0;
   let nextIdx = 1;
   let isRunning = false;
+  let progress = 0;
   let delayMinutes = 14; // Default realistic Indian Railways active delay
+  const notStarted = elapsed < firstDep;
+  const completed = elapsed > lastArr;
 
-  if (firstDep < lastArr) {
-    if (currentMinutes < firstDep) {
-      prevIdx = 0;
-      nextIdx = 1;
-      isRunning = false;
-      delayMinutes = 0;
-    } else if (currentMinutes > lastArr) {
-      prevIdx = halts.length - 2;
-      nextIdx = halts.length - 1;
-      isRunning = false;
-    } else {
-      isRunning = true;
-      for (let i = 0; i < halts.length - 1; i++) {
-        const dep = parseTime(halts[i].departure) ?? parseTime(halts[i].arrival) ?? 0;
-        const arrNext = parseTime(halts[i + 1].arrival) ?? parseTime(halts[i + 1].departure) ?? 1440;
-        if (currentMinutes >= dep && currentMinutes <= arrNext) {
-          prevIdx = i;
-          nextIdx = i + 1;
-          break;
-        }
-      }
-    }
+  if (notStarted) {
+    delayMinutes = 0;
+  } else if (completed) {
+    prevIdx = halts.length - 2;
+    nextIdx = halts.length - 1;
+    progress = 1;
   } else {
-    // Overnight train
-    isRunning = true;
     for (let i = 0; i < halts.length - 1; i++) {
-      let dep = parseTime(halts[i].departure) ?? parseTime(halts[i].arrival) ?? 0;
-      let arrNext = parseTime(halts[i + 1].arrival) ?? parseTime(halts[i + 1].departure) ?? 1440;
-      if (arrNext < dep) arrNext += 1440;
-      let cur = currentMinutes;
-      if (cur < firstDep) cur += 1440;
-      if (cur >= dep && cur <= arrNext) {
+      if (elapsed < times[i].dep) {
         prevIdx = i;
         nextIdx = i + 1;
+        break;
+      }
+      if (elapsed <= times[i + 1].arr) {
+        prevIdx = i;
+        nextIdx = i + 1;
+        isRunning = true;
+        progress = Math.min(1, Math.max(0, (elapsed - times[i].dep) / Math.max(1, times[i + 1].arr - times[i].dep)));
         break;
       }
     }
@@ -221,17 +226,6 @@ export function computeLiveStatusFromSchedule(train: PopularTrain): LiveTrainSta
 
   const prevHalt = halts[prevIdx];
   const nextHalt = halts[nextIdx];
-
-  // Calculate segment progress (0 to 1)
-  let prevTime = parseTime(prevHalt.departure) ?? parseTime(prevHalt.arrival) ?? 0;
-  let nextTime = parseTime(nextHalt.arrival) ?? parseTime(nextHalt.departure) ?? 1440;
-  if (nextTime < prevTime) nextTime += 1440;
-  let adjustedCur = currentMinutes;
-  if (adjustedCur < prevTime) adjustedCur += 1440;
-
-  const span = Math.max(1, nextTime - prevTime);
-  const rawProgress = Math.min(1, Math.max(0, (adjustedCur - prevTime) / span));
-  const progress = isRunning ? rawProgress : 0;
 
   // Interpolate coordinates along the segment
   const p0 = prevHalt.at;
@@ -244,7 +238,7 @@ export function computeLiveStatusFromSchedule(train: PopularTrain): LiveTrainSta
   return {
     trainNumber: train.number,
     trainName: train.name,
-    status: isRunning ? "running" : currentMinutes < firstDep ? "not-started" : "completed",
+    status: notStarted ? "not-started" : completed ? "completed" : "running",
     isLive: true,
     delayMinutes,
     lastUpdatedAt: new Date().toISOString(),

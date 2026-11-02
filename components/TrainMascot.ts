@@ -1,7 +1,7 @@
 // Original side-profile illustration of an Indian Railways electric locomotive (WAP-7 style livery).
 // Drawn facing east (right); rotate with `mascotTransform`.
 export const TRAIN_MASCOT_SVG = `
-<svg class="loco-svg" viewBox="0 0 96 40" width="72" height="30" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<svg class="loco-svg" viewBox="0 0 96 40" width="40" height="17" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <g fill="none" stroke="#1f2937" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M40 9 L48 3 L56 9" />
     <path d="M44 6 L52 6" />

@@ -150,10 +150,18 @@ export async function GET(req: Request) {
   const no = (sp.get("no") ?? "").replace(/\D/g, "");
   if (!no) return Response.json({ error: "Enter a train number." }, { status: 400 });
 
+  // Journey start date (IST, YYYY-MM-DD); only today and the previous few days are accepted.
+  const rawDate = sp.get("date") ?? "";
+  const daysAgo = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+    ? Math.round((Date.parse(new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10)) - Date.parse(rawDate)) / 86400000)
+    : NaN;
+  const startDate = daysAgo >= 0 && daysAgo <= 5 ? rawDate : undefined;
+  const liveUrl = `${BASE}/trains/${encodeURIComponent(no)}/live?includeCoordinates=true${startDate ? `&date=${startDate}` : ""}`;
+
   // Dedicated lightweight live status polling endpoint
   if (sp.get("liveOnly") === "1") {
     try {
-      const rLive = await fetch(`${BASE}/trains/${encodeURIComponent(no)}/live?includeCoordinates=true`, {
+      const rLive = await fetch(liveUrl, {
         headers: getHeaders(),
         signal: AbortSignal.timeout(10000),
       });
@@ -181,6 +189,7 @@ export async function GET(req: Request) {
                   delayMinutes: d.currentLocation.delayMinutes,
                   speedKmh: d.currentLocation.speedKmh,
                   segmentProgress: d.currentLocation.segmentProgress,
+                  bearing: typeof d.currentLocation.bearing === "number" ? d.currentLocation.bearing : undefined,
                 }
               : undefined,
             previousHalt: d.previousHalt,
@@ -193,7 +202,7 @@ export async function GET(req: Request) {
 
     // Fallback live status computation
     const pTrain = popularTrains[no] || popularTrains["12951"];
-    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no });
+    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
     return Response.json({ liveStatus });
   }
 
@@ -204,7 +213,7 @@ export async function GET(req: Request) {
         signal: AbortSignal.timeout(15000),
       }).catch(() => null),
       fetchTrainRouteCoords(no),
-      fetch(`${BASE}/trains/${encodeURIComponent(no)}/live?includeCoordinates=true`, {
+      fetch(liveUrl, {
         headers: getHeaders(),
         signal: AbortSignal.timeout(12000),
       }).catch(() => null),
@@ -246,6 +255,7 @@ export async function GET(req: Request) {
                       delayMinutes: d.currentLocation.delayMinutes,
                       speedKmh: d.currentLocation.speedKmh,
                       segmentProgress: d.currentLocation.segmentProgress,
+                  bearing: typeof d.currentLocation.bearing === "number" ? d.currentLocation.bearing : undefined,
                     }
                   : undefined,
                 previousHalt: d.previousHalt,
@@ -301,7 +311,7 @@ export async function GET(req: Request) {
 
     // Graceful fallback for quota limit (HTTP 429) or offline RailRadar
     const pTrain = popularTrains[no] || popularTrains["12951"];
-    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no });
+    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
     const stops = pTrain.halts.map((h) => h.name);
     const stationStops = pTrain.halts.map((h) => {
       let stStatus = "upcoming";
@@ -327,7 +337,7 @@ export async function GET(req: Request) {
     return Response.json({ stops, stationStops, line, title, place, distance, duration, liveStatus });
   } catch {
     const pTrain = popularTrains[no] || popularTrains["12951"];
-    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no });
+    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
     const stops = pTrain.halts.map((h) => h.name);
     return Response.json({
       stops,
