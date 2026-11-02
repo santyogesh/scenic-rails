@@ -2,7 +2,6 @@ import type { LL } from "@/lib/geo";
 import { popularTrains, computeLiveStatusFromSchedule } from "@/data/popularTrains";
 
 const BASE = "https://api.railradar.in/v1";
-const DEFAULT_KEY = "rg_dfca9b5371834a3f9e43fe5ea7bf21fd";
 
 // In-memory cache to minimize RailRadar quota usage
 const cache = new Map<string, { data: any; expiry: number }>();
@@ -33,7 +32,7 @@ function unavailable(no: string, quota: boolean) {
 }
 
 function getHeaders() {
-  const key = process.env.RAILRADAR_API_KEY || DEFAULT_KEY;
+  const key = process.env.RAILRADAR_API_KEY ?? "";
   return {
     Authorization: `Bearer ${key}`,
     "X-Api-Key": key,
