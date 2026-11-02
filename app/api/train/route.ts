@@ -21,6 +21,17 @@ function setCache(key: string, data: any, ttlMs: number) {
   cache.set(key, { data, expiry: Date.now() + ttlMs });
 }
 
+function unavailable(no: string, quota: boolean) {
+  return Response.json(
+    {
+      error: quota
+        ? `Live data for train ${no} is unavailable: the RailRadar API quota is used up. Try again later, or enter the stations instead.`
+        : `Couldn't reach RailRadar for train ${no}. Try again, or enter the stations instead.`,
+    },
+    { status: 503 }
+  );
+}
+
 function getHeaders() {
   const key = process.env.RAILRADAR_API_KEY || DEFAULT_KEY;
   return {
@@ -201,7 +212,8 @@ export async function GET(req: Request) {
     } catch {}
 
     // Fallback live status computation
-    const pTrain = popularTrains[no] || popularTrains["12951"];
+    const pTrain = popularTrains[no];
+    if (!pTrain) return Response.json({ liveStatus: null }, { status: 503 });
     const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
     return Response.json({ liveStatus });
   }
@@ -310,8 +322,9 @@ export async function GET(req: Request) {
     }
 
     // Graceful fallback for quota limit (HTTP 429) or offline RailRadar
-    const pTrain = popularTrains[no] || popularTrains["12951"];
-    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
+    const pTrain = popularTrains[no];
+    if (!pTrain) return unavailable(no, rTrain?.status === 429);
+    const liveStatus = computeLiveStatusFromSchedule(pTrain, startDate);
     const stops = pTrain.halts.map((h) => h.name);
     const stationStops = pTrain.halts.map((h) => {
       let stStatus = "upcoming";
@@ -328,7 +341,7 @@ export async function GET(req: Request) {
       };
     });
 
-    const title = `${pTrain.name} (${no})`;
+    const title = `${pTrain.name} (${pTrain.number})`;
     const place = `${stops[0]} to ${stops[stops.length - 1]}`;
     const distance = `${pTrain.distance} km`;
     const duration = `${Math.floor(pTrain.duration / 60)}h ${pTrain.duration % 60}m`;
@@ -336,7 +349,8 @@ export async function GET(req: Request) {
 
     return Response.json({ stops, stationStops, line, title, place, distance, duration, liveStatus });
   } catch {
-    const pTrain = popularTrains[no] || popularTrains["12951"];
+    const pTrain = popularTrains[no];
+    if (!pTrain) return unavailable(no, false);
     const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
     const stops = pTrain.halts.map((h) => h.name);
     return Response.json({
