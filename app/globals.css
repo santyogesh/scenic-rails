@@ -28,3 +28,8 @@ a{color:inherit}
 .pin{width:22px;height:22px;border-radius:50%;border:3px solid var(--ink);background:var(--lamp);cursor:pointer;padding:0}
 .pin.on{transform:scale(1.5);background:#fff}
 @media(max-width:800px){.journey{grid-template-columns:1fr;grid-template-rows:42% 1fr}.map{grid-column:1;grid-row:1}.sights{grid-column:1;grid-row:2;border:0}}
+.plan{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.plan input{flex:1 1 220px;padding:10px;border:1px solid var(--ink);border-radius:6px;font:inherit;background:#fff}
+.plan button{padding:10px 18px;border:0;border-radius:6px;background:var(--rail);color:#fff;font:inherit;cursor:pointer}
+.plan button:disabled{opacity:.5}
+.sight img{display:block;margin-top:8px;max-width:100%;height:auto;border-radius:6px}
