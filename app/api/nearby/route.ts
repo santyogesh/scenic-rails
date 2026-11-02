@@ -2,12 +2,15 @@ import type { LL } from "@/lib/geo";
 import type { NearbyItem } from "@/lib/nearby";
 import { overpassQuery } from "@/lib/overpass";
 import { osmKind, osmText } from "@/lib/window";
+import { after } from "next/server";
+import { cacheGet, cacheKey, cacheSet } from "@/lib/cache";
+import { getCell, saveCell } from "@/lib/db";
 
 export const maxDuration = 40;
 
 const MAX_RADIUS_KM = 15;
 const BUDGET_MS = 30000;
-const cache = new Map<string, { items: NearbyItem[]; expiry: number }>();
+const CACHE_TTL_SEC = 6 * 3600;
 
 /** Named landmarks from OpenStreetMap within `r` km of a point, for the camera view. */
 export async function GET(req: Request) {
@@ -20,8 +23,14 @@ export async function GET(req: Request) {
 
   // About 1 km cells, so people standing close together share one Overpass query.
   const key = `${lat.toFixed(2)},${lng.toFixed(2)},${r}`;
-  const hit = cache.get(key);
-  if (hit && hit.expiry > Date.now()) return Response.json({ items: hit.items, cached: true });
+  const ck = cacheKey("near", key);
+  const hit = await cacheGet<NearbyItem[]>(ck);
+  if (hit) return Response.json({ items: hit, cached: true });
+  const stored = await getCell(key);
+  if (stored) {
+    after(() => cacheSet(ck, stored, CACHE_TTL_SEC));
+    return Response.json({ items: stored, cached: true });
+  }
 
   const near = Math.min(r, 5) * 1000, far = r * 1000;
   const C = `${lat.toFixed(5)},${lng.toFixed(5)}`;
@@ -61,7 +70,6 @@ out center tags;`;
       source: "osm",
     });
   }
-  if (cache.size > 2000) cache.clear();
-  cache.set(key, { items, expiry: Date.now() + 6 * 3600000 });
+  after(() => Promise.all([cacheSet(ck, items, CACHE_TTL_SEC), saveCell(key, items)]));
   return Response.json({ items });
 }

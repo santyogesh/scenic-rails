@@ -4,6 +4,9 @@ import { locate, makeTrack, thin, Track } from "@/lib/side";
 import { MAX_SEARCH_KM, maxOffsetKm, osmKind, osmText, pickBalanced, WindowItem, WindowKind } from "@/lib/window";
 import { wikiWindow } from "@/lib/wikiWindow";
 import { overpassQuery, tfetch, UA } from "@/lib/overpass";
+import { after } from "next/server";
+import { cacheGet, cacheKey, cacheSet } from "@/lib/cache";
+import { getRoute, saveRoute } from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -13,7 +16,7 @@ const OSM_ONLY_BUDGET_MS = 44000;
 const BHARATLAS = "https://bharatlas.com/api/v1";
 const WIKI = "https://en.wikipedia.org/w/api.php";
 
-const cache = new Map<string, { items: WindowItem[]; expiry: number }>();
+const CACHE_TTL_SEC = 12 * 3600;
 let wildlifeInfo: { at: number; byName: Map<string, any> } | null = null;
 
 type Cand = Omit<WindowItem, "km" | "side" | "offsetKm" | "id"> & { key: string; wiki?: string; pageid?: number };
@@ -288,9 +291,16 @@ export async function POST(req: Request) {
   if (!want.size) return Response.json({ error: "Unknown sources." }, { status: 400 });
 
   const line = thin(raw, 0.5);
-  const key = [...want].sort().join("+") + "@" + hash(thin(line, 5));
-  const hit = cache.get(key);
-  if (hit && hit.expiry > Date.now()) return Response.json({ items: hit.items, cached: true });
+  const sources = [...want].sort().join("+");
+  const key = sources + "@" + hash(thin(line, 5));
+  const ck = cacheKey("win", key);
+  const hit = await cacheGet<WindowItem[]>(ck);
+  if (hit) return Response.json({ items: hit, cached: true });
+  const stored = await getRoute(key);
+  if (stored) {
+    after(() => cacheSet(ck, stored, CACHE_TTL_SEC));
+    return Response.json({ items: stored, cached: true });
+  }
 
   const track = makeTrack(line);
   // OSM alone gets a longer budget: public Overpass servers are often slow.
@@ -312,6 +322,8 @@ export async function POST(req: Request) {
   const items = finalize(track, [...cands], wildlife);
   const counts = { osm: 0, wikipedia: 0, bharatlas: 0 };
   for (const c of cands) counts[c.source]++;
-  if (items.length) cache.set(key, { items, expiry: Date.now() + 12 * 3600000 });
+  if (items.length) {
+    after(() => Promise.all([cacheSet(ck, items, CACHE_TTL_SEC), saveRoute(key, sources, track.total, items)]));
+  }
   return Response.json({ items, sources: counts, total: Math.round(track.total) });
 }
