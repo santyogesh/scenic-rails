@@ -1,15 +1,18 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
-import { geocodeStop, buildTrack, findSights, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { geocodeStop, buildTrack, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
 import type { LL } from "@/lib/geo";
+import { locate, makeTrack, orientLine, pointAt } from "@/lib/side";
+import { mergeItems, sideText, WindowItem } from "@/lib/window";
+import WindowPanel from "@/components/WindowPanel";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
 type Result = {
   line: LL[];
   stops: Stop[];
-  sights: Sight[];
+  window: WindowItem[] | null;
   title: string;
   liveStatus?: LiveTrainStatus | null;
   trainNumber?: string;
@@ -17,7 +20,45 @@ type Result = {
 
 export default function Home() {
   const [q, setQ] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<Result | null>(null), [sel, setSel] = useState<Sight | null>(null), [pics, setPics] = useState<string[] | null>(null);
+  const [res, setRes] = useState<Result | null>(null), [sel, setSel] = useState<Sight | WindowItem | null>(null), [pics, setPics] = useState<string[] | null>(null);
+  const [winLoading, setWinLoading] = useState(false), [rideKm, setRideKm] = useState<number | null>(null), [manualKm, setManualKm] = useState(0);
+  const [focusAt, setFocusAt] = useState<LL | null>(null);
+  const winReq = useRef(0);
+
+  const track = useMemo(() => (res ? makeTrack(res.line) : null), [res?.line]);
+  const liveAt = res?.liveStatus?.currentLocation?.at;
+  const liveLoc = useMemo(() => (track && liveAt ? locate(track, liveAt) : null), [track, liveAt?.[0], liveAt?.[1]]);
+  const liveKm = liveLoc && liveLoc.offsetKm < 20 ? liveLoc.km : null;
+  const liveBearing = track && liveKm !== null ? pointAt(track, liveKm).bearing : undefined;
+  const refSource = rideKm !== null ? "ride" : liveKm !== null ? "live" : "manual";
+  const refKm = rideKm ?? liveKm ?? manualKm;
+
+  // Landmarks within 5 km either side. OSM runs as its own request since public Overpass servers can be slow.
+  function loadWindow(line: LL[]) {
+    const id = ++winReq.current;
+    setWinLoading(true);
+    let pending = 2;
+    for (const sources of [["wikipedia", "bharatlas"], ["osm"]]) {
+      fetch("/api/window", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ line, sources }) })
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((j) => {
+          if (id !== winReq.current) return;
+          setRes((prev) => (prev ? { ...prev, window: mergeItems(prev.window ?? [], j.items ?? []) } : prev));
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (--pending === 0 && id === winReq.current) {
+            setWinLoading(false);
+            setRes((prev) => (prev && !prev.window ? { ...prev, window: [] } : prev));
+          }
+        });
+    }
+  }
+
+  const pickWindow = (it: WindowItem) => {
+    setSel(it);
+    setFocusAt(it.at);
+  };
 
   useEffect(() => {
     if (!sel) { setPics(null); return; }
@@ -95,15 +136,18 @@ export default function Home() {
         title = `${stops[0].name} to ${stops[stops.length - 1].name}`;
       }
 
+      line = orientLine(line, stops[0]?.at, stops[stops.length - 1]?.at);
+
       // First thing: plot all stops & live train on the open-source map immediately!
-      setRes({ line, stops, sights: [], title, liveStatus, trainNumber });
+      setRes({ line, stops, window: null, title, liveStatus, trainNumber });
+      setRideKm(null);
+      setManualKm(0);
+      setFocusAt(null);
       setBusy(false);
       setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
 
-      // Then discover scenic sights along the track in the background
-      findSights(line, () => {}).then((sights) => {
-        setRes((prev) => (prev ? { ...prev, sights } : prev));
-      }).catch(() => {});
+      // Then find what's outside the window along the track in the background
+      loadWindow(line);
     } catch (err) {
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
       setBusy(false);
@@ -115,28 +159,43 @@ export default function Home() {
       <RouteMap
         line={res.line}
         stops={res.stops}
-        sights={res.sights}
+        sights={res.window ?? []}
         onPick={setSel}
         liveStatus={res.liveStatus}
         trainNumber={res.trainNumber}
         onRefreshLive={res.trainNumber ? refreshLiveStatus : undefined}
+        liveBearing={liveBearing}
+        onRideProgress={setRideKm}
+        focusAt={focusAt}
       />
       <div className="bar glass">
         <strong>{res.title}</strong>
         <span>
           {res.stops.length} stops
           {res.liveStatus ? ` • Live Tracking active` : ""}
-          {res.sights.length ? ` • ${res.sights.length} scenic spots` : ""}
+          {res.window?.length ? ` • ${res.window.length} landmarks within 5 km` : ""}
         </span>
-        <button onClick={() => setRes(null)}>New search</button>
+        <button onClick={() => { winReq.current++; setWinLoading(false); setRes(null); }}>New search</button>
       </div>
+      <WindowPanel
+        items={res.window}
+        loading={winLoading}
+        totalKm={track?.total ?? 0}
+        refKm={refKm}
+        refSource={refSource}
+        onScrub={(km) => { setManualKm(km); if (track) setFocusAt(pointAt(track, km).at); }}
+        onPick={pickWindow}
+        withHud={Boolean(res.liveStatus)}
+      />
       {sel && (
         <div className="scrim" onClick={() => setSel(null)}>
           <div className="modal glass" role="dialog" aria-modal="true" aria-label={sel.name} onClick={(e) => e.stopPropagation()}>
             <button className="x" onClick={() => setSel(null)} aria-label="Close">×</button>
             <div className="gal">{pics === null ? <p>Loading photos…</p> : pics.length ? pics.map((u) => <img key={u} src={u} alt={sel.name} loading="lazy" />) : <p>No photos found nearby.</p>}</div>
-            <h2>{sel.name}</h2><p>{sel.text}</p>
-            {sel.url && <a href={sel.url} target="_blank" rel="noreferrer">Read on Wikipedia</a>}
+            <h2>{sel.name}</h2>
+            {"side" in sel && <p className="win-modal-side">{sideText(sel)} · km {Math.round(sel.km)}</p>}
+            <p>{sel.text}</p>
+            {sel.url && <a href={sel.url} target="_blank" rel="noreferrer">{sel.url.includes("wikipedia") ? "Read on Wikipedia" : "View on OpenStreetMap"}</a>}
           </div>
         </div>
       )}
