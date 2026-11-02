@@ -325,3 +325,8 @@ form>button{min-height:48px;min-width:72px}
 @media(max-width:700px){
   .live-hud.closed .live-hud-actions .live-action-btn:first-child{display:none}
 }
+
+/* Timetable-estimated position */
+.live-delay-pill.est{background:rgba(148,163,184,.18);color:#cbd5e1;border:1px solid rgba(148,163,184,.4)}
+.live-train-tag .est{color:#94a3b8}
+.live-est-note{font-size:.78rem;color:#9fb0c6;line-height:1.35}

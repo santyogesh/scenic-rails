@@ -21,6 +21,8 @@ export type LiveTrainStatus = {
   trainName?: string;
   status: string; // 'running' | 'at-station' | 'not-started' | 'completed'
   isLive: boolean;
+  /** Position worked out from the timetable, not reported by the train; delays are unknown. */
+  estimated?: boolean;
   delayMinutes: number;
   lastUpdatedAt: string;
   currentLocation?: {

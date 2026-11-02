@@ -1,5 +1,8 @@
 import type { LL } from "@/lib/geo";
+import type { LiveTrainStatus, Stop } from "@/lib/rail";
 import { popularTrains, computeLiveStatusFromSchedule } from "@/data/popularTrains";
+import { erailTrain } from "@/lib/erail";
+import { findStation } from "@/lib/stations";
 
 const BASE = "https://api.railradar.in/v1";
 
@@ -24,11 +27,63 @@ function unavailable(no: string, quota: boolean) {
   return Response.json(
     {
       error: quota
-        ? `Live data for train ${no} is unavailable: the RailRadar API quota is used up. Try again later, or enter the stations instead.`
-        : `Couldn't reach RailRadar for train ${no}. Try again, or enter the stations instead.`,
+        ? `Couldn't load train ${no}: the timetable source didn't answer and the RailRadar quota is used up. Try again in a minute, or enter the stations instead.`
+        : `Couldn't load train ${no}. Check the number, try again in a minute, or enter the stations instead.`,
     },
     { status: 503 }
   );
+}
+
+const LIVE_CACHE_MS = 5 * 60000;
+
+function toLiveStatus(d: any, no: string): LiveTrainStatus | null {
+  if (!d) return null;
+  const c = d.currentLocation;
+  const lat = c?.coordinates?.lat, lng = c?.coordinates?.lng;
+  return {
+    trainNumber: d.trainNumber || no,
+    trainName: d.trainName,
+    status: d.status || (d.isLive ? "running" : "unknown"),
+    isLive: Boolean(d.isLive),
+    delayMinutes: typeof d.delayMinutes === "number" ? d.delayMinutes : 0,
+    lastUpdatedAt: d.lastUpdatedAt || new Date().toISOString(),
+    currentLocation: c
+      ? {
+          stationName: c.stationName,
+          stationCode: c.stationCode,
+          status: c.status,
+          coordinates: c.coordinates,
+          at: typeof lng === "number" && typeof lat === "number" ? ([lng, lat] as LL) : undefined,
+          distanceFromOriginKm: c.distanceFromOriginKm,
+          delayMinutes: c.delayMinutes,
+          speedKmh: c.speedKmh,
+          segmentProgress: c.segmentProgress,
+          bearing: typeof c.bearing === "number" ? c.bearing : undefined,
+        }
+      : undefined,
+    previousHalt: d.previousHalt,
+    nextHalt: d.nextHalt,
+  };
+}
+
+/** Mark stops passed / next / upcoming from the (estimated) position. */
+function withStatus(halts: Stop[], live: LiveTrainStatus): Stop[] {
+  const km = live.currentLocation?.distanceFromOriginKm;
+  return halts.map((h) => ({
+    ...h,
+    status:
+      km !== undefined && h.distance !== undefined && h.distance < km ? "departed"
+      : h.code && h.code === live.nextHalt?.stationCode ? "current"
+      : "upcoming",
+  }));
+}
+
+/** Timetable for estimating the position: erail.in first, then the built-in trains. */
+async function schedule(no: string) {
+  const e = await erailTrain(no).catch(() => null);
+  if (e) return { number: no, name: popularTrains[no]?.name ?? `${e.from} - ${e.to} ${e.type}`.trim(), halts: e.stops, distance: e.distance };
+  const p = popularTrains[no];
+  return p ? { number: no, name: p.name, halts: p.halts, distance: p.distance } : null;
 }
 
 function getHeaders() {
@@ -67,6 +122,8 @@ async function searchStation(q: string) {
   const cacheKey = `station_${q.toLowerCase()}`;
   const cached = getCached<any>(cacheKey);
   if (cached) return cached;
+  const local = findStation(q);
+  if (local) return local;
 
   try {
     const r = await fetch(`${BASE}/lookup/search/stations?q=${encodeURIComponent(q)}&limit=1`, {
@@ -172,53 +229,45 @@ export async function GET(req: Request) {
   const startDate = daysAgo >= 0 && daysAgo <= 5 ? rawDate : undefined;
   const liveUrl = `${BASE}/trains/${encodeURIComponent(no)}/live?includeCoordinates=true${startDate ? `&date=${startDate}` : ""}`;
 
-  // Dedicated lightweight live status polling endpoint
+  // Position polling. RailRadar's real position costs quota (100 requests/month), so it's only fetched when the
+  // user asks for it (real=1) and shared for 5 minutes; otherwise the position is estimated from the timetable.
   if (sp.get("liveOnly") === "1") {
-    try {
-      const rLive = await fetch(liveUrl, {
-        headers: getHeaders(),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (rLive.ok) {
-        const jLive = await rLive.json();
-        const d = jLive?.data;
-        if (d) {
-          const lat = d.currentLocation?.coordinates?.lat;
-          const lng = d.currentLocation?.coordinates?.lng;
-          const liveStatus = {
-            trainNumber: d.trainNumber || no,
-            trainName: d.trainName,
-            status: d.status || (d.isLive ? "running" : "unknown"),
-            isLive: Boolean(d.isLive),
-            delayMinutes: typeof d.delayMinutes === "number" ? d.delayMinutes : 0,
-            lastUpdatedAt: d.lastUpdatedAt || new Date().toISOString(),
-            currentLocation: d.currentLocation
-              ? {
-                  stationName: d.currentLocation.stationName,
-                  stationCode: d.currentLocation.stationCode,
-                  status: d.currentLocation.status,
-                  coordinates: d.currentLocation.coordinates,
-                  at: typeof lng === "number" && typeof lat === "number" ? ([lng, lat] as LL) : undefined,
-                  distanceFromOriginKm: d.currentLocation.distanceFromOriginKm,
-                  delayMinutes: d.currentLocation.delayMinutes,
-                  speedKmh: d.currentLocation.speedKmh,
-                  segmentProgress: d.currentLocation.segmentProgress,
-                  bearing: typeof d.currentLocation.bearing === "number" ? d.currentLocation.bearing : undefined,
-                }
-              : undefined,
-            previousHalt: d.previousHalt,
-            nextHalt: d.nextHalt,
-          };
+    if (sp.get("real") === "1") {
+      const key = `live_${no}_${startDate ?? ""}`;
+      const cached = getCached<any>(key);
+      if (cached) return Response.json({ liveStatus: cached });
+      try {
+        const rLive = await fetch(liveUrl, { headers: getHeaders(), signal: AbortSignal.timeout(10000) });
+        const liveStatus = rLive.ok ? toLiveStatus((await rLive.json())?.data, no) : null;
+        if (liveStatus) {
+          setCache(key, liveStatus, LIVE_CACHE_MS);
           return Response.json({ liveStatus });
         }
-      }
-    } catch {}
+      } catch {}
+    }
+    const sched = await schedule(no);
+    if (!sched) return Response.json({ liveStatus: null }, { status: 503 });
+    return Response.json({ liveStatus: computeLiveStatusFromSchedule(sched, startDate) });
+  }
 
-    // Fallback live status computation
-    const pTrain = popularTrains[no];
-    if (!pTrain) return Response.json({ liveStatus: null }, { status: 503 });
-    const liveStatus = computeLiveStatusFromSchedule({ ...pTrain, number: no }, startDate);
-    return Response.json({ liveStatus });
+  // Timetable and stops from erail.in (no quota); RailRadar below is only the fallback.
+  const e = await erailTrain(no).catch(() => null);
+  if (e) {
+    const p = popularTrains[no];
+    const name = p?.name ?? `${e.from} - ${e.to} ${e.type}`.trim();
+    const liveStatus = computeLiveStatusFromSchedule({ number: no, name, halts: e.stops, distance: e.distance }, startDate);
+    const stops = e.stops.map((s) => s.name);
+    return Response.json({
+      stops,
+      stationStops: withStatus(e.stops, liveStatus),
+      line: p?.line ?? e.stops.map((s) => s.at),
+      waypoints: e.stops.map((s) => s.at),
+      title: `${name} (${no})`,
+      place: `${stops[0]} to ${stops[stops.length - 1]}`,
+      distance: e.distance ? `${e.distance} km` : "",
+      duration: e.duration ? `${Math.floor(e.duration / 60)}h ${e.duration % 60}m` : "",
+      liveStatus,
+    });
   }
 
   try {
@@ -250,32 +299,7 @@ export async function GET(req: Request) {
             const jLive = await rLive.json();
             const d = jLive?.data;
             if (d) {
-              const lat = d.currentLocation?.coordinates?.lat;
-              const lng = d.currentLocation?.coordinates?.lng;
-              liveStatus = {
-                trainNumber: d.trainNumber || no,
-                trainName: d.trainName,
-                status: d.status || (d.isLive ? "running" : "unknown"),
-                isLive: Boolean(d.isLive),
-                delayMinutes: typeof d.delayMinutes === "number" ? d.delayMinutes : 0,
-                lastUpdatedAt: d.lastUpdatedAt || new Date().toISOString(),
-                currentLocation: d.currentLocation
-                  ? {
-                      stationName: d.currentLocation.stationName,
-                      stationCode: d.currentLocation.stationCode,
-                      status: d.currentLocation.status,
-                      coordinates: d.currentLocation.coordinates,
-                      at: typeof lng === "number" && typeof lat === "number" ? ([lng, lat] as LL) : undefined,
-                      distanceFromOriginKm: d.currentLocation.distanceFromOriginKm,
-                      delayMinutes: d.currentLocation.delayMinutes,
-                      speedKmh: d.currentLocation.speedKmh,
-                      segmentProgress: d.currentLocation.segmentProgress,
-                  bearing: typeof d.currentLocation.bearing === "number" ? d.currentLocation.bearing : undefined,
-                    }
-                  : undefined,
-                previousHalt: d.previousHalt,
-                nextHalt: d.nextHalt,
-              };
+              liveStatus = toLiveStatus(d, no);
 
               if (Array.isArray(d.route)) {
                 d.route.forEach((st: any) => {
@@ -329,20 +353,7 @@ export async function GET(req: Request) {
     if (!pTrain) return unavailable(no, rTrain?.status === 429);
     const liveStatus = computeLiveStatusFromSchedule(pTrain, startDate);
     const stops = pTrain.halts.map((h) => h.name);
-    const stationStops = pTrain.halts.map((h) => {
-      let stStatus = "upcoming";
-      if (liveStatus.currentLocation?.distanceFromOriginKm !== undefined && h.distance !== undefined) {
-        if (h.distance <= liveStatus.currentLocation.distanceFromOriginKm) stStatus = "departed";
-        else if (h.code === liveStatus.nextHalt?.stationCode) stStatus = "current";
-      }
-      return {
-        ...h,
-        status: stStatus,
-        delayArrival: liveStatus.delayMinutes,
-        delayDeparture: liveStatus.delayMinutes,
-        platform: "1",
-      };
-    });
+    const stationStops = withStatus(pTrain.halts, liveStatus);
 
     const title = `${pTrain.name} (${pTrain.number})`;
     const place = `${stops[0]} to ${stops[stops.length - 1]}`;

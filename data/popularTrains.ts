@@ -129,7 +129,10 @@ function minutesSince(date: string): number {
   return (Date.now() - Date.parse(`${date}T00:00:00+05:30`)) / 60000;
 }
 
-export function computeLiveStatusFromSchedule(train: PopularTrain, startDate?: string): LiveTrainStatus {
+export function computeLiveStatusFromSchedule(
+  train: Pick<PopularTrain, "number" | "name" | "halts" | "distance">,
+  startDate?: string
+): LiveTrainStatus {
   const parseTime = (tStr?: string): number | null => {
     if (!tStr) return null;
     const parts = tStr.split(":").map(Number);
@@ -164,12 +167,12 @@ export function computeLiveStatusFromSchedule(train: PopularTrain, startDate?: s
   let nextIdx = 1;
   let isRunning = false;
   let progress = 0;
-  let delayMinutes = 14; // Default realistic Indian Railways active delay
+  const delayMinutes = 0;
   const notStarted = elapsed < firstDep;
   const completed = elapsed > lastArr;
 
   if (notStarted) {
-    delayMinutes = 0;
+    // Waiting at the origin.
   } else if (completed) {
     prevIdx = halts.length - 2;
     nextIdx = halts.length - 1;
@@ -207,6 +210,7 @@ export function computeLiveStatusFromSchedule(train: PopularTrain, startDate?: s
     trainName: train.name,
     status: notStarted ? "not-started" : completed ? "completed" : "running",
     isLive: true,
+    estimated: true,
     delayMinutes,
     lastUpdatedAt: new Date().toISOString(),
     currentLocation: {
@@ -217,7 +221,7 @@ export function computeLiveStatusFromSchedule(train: PopularTrain, startDate?: s
       at: [trainLng, trainLat] as LL,
       distanceFromOriginKm: Math.round(currentDist),
       delayMinutes,
-      speedKmh: isRunning ? 92 : 0,
+      speedKmh: isRunning ? 1 : 0, // only signals "moving"; the real speed is unknown
       segmentProgress: Math.round(progress * 100) / 100,
     },
     previousHalt: {
@@ -233,7 +237,6 @@ export function computeLiveStatusFromSchedule(train: PopularTrain, startDate?: s
       distance: nextHalt.distance,
       sequence: nextHalt.sequence,
       scheduledArrival: nextHalt.arrival,
-      platform: "1",
       delayArrival: delayMinutes,
     },
     totalDistance: train.distance,
