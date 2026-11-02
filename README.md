@@ -4,6 +4,6 @@ Add a route by appending to `data/routes.ts`. Coordinates are [lng, lat] and sim
 For heavy traffic, replace the OSM tile URL in `components/RouteMap.tsx` with a provider such as MapTiler or Stadia (tile.openstreetmap.org has a fair-use policy).
 
 ## Plan by train number or stations (`/plan`)
-- Track geometry: real OSM rail ways are fetched via Overpass and routed along (shortest path between stops), not straight lines.
-- Sights: Wikipedia geosearch along the track, any country.
-- Train number lookup needs `RAPIDAPI_KEY` (IRCTC1 on RapidAPI, India). Without it, type the stations instead; that works worldwide.
+- Track geometry & stations: Powered by RailRadar API (`api.railradar.in/v1`) for train schedules, station search, and GIS railway route geometry.
+- Sights: Wikipedia geosearch along the track.
+- Train and station lookup uses `RAILRADAR_API_KEY`.
