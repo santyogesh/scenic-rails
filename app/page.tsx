@@ -1,6 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { track as trackEvent } from "@vercel/analytics";
 import { geocodeStop, buildTrack, photos, pool, Stop, Sight, LiveTrainStatus } from "@/lib/rail";
 import type { LL } from "@/lib/geo";
 import { locate, makeTrack, orientLine, pointAt } from "@/lib/side";
@@ -257,10 +258,12 @@ export default function Home() {
       setFocusAt(null);
       setBusy(false);
       setMsg(bad ? `${bad} stretch(es) drawn straight: no track data` : "");
+      trackEvent("search", { type: trainNumber ? "train" : "stations", train: trainNumber ?? null, live: !!liveStatus?.isLive });
 
       // Then find what's outside the window along the track in the background
       loadWindow(line);
     } catch (err) {
+      trackEvent("search_failed", { query: q.trim().slice(0, 60) });
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
       setBusy(false);
     }
@@ -295,7 +298,7 @@ export default function Home() {
           </span>
         </div>
         {res.liveStatus && "wakeLock" in navigator && (
-          <button type="button" className={`bar-icon ${keepAwake ? "on" : ""}`} onClick={() => setKeepAwake((k) => !k)} aria-pressed={keepAwake} aria-label="Keep screen on" title={keepAwake ? "Screen stays on" : "Screen may sleep"}>
+          <button type="button" className={`bar-icon ${keepAwake ? "on" : ""}`} onClick={() => { setKeepAwake((k) => !k); trackEvent("keep_awake", { on: !keepAwake }); }} aria-pressed={keepAwake} aria-label="Keep screen on" title={keepAwake ? "Screen stays on" : "Screen may sleep"}>
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
         )}
@@ -318,7 +321,7 @@ export default function Home() {
       <PlaceToast at={toastAt} items={res.window} />
       <nav className="side-bar" aria-label="What's outside the window">
         {(["left", "right"] as Side[]).map((s) => (
-          <button key={s} type="button" className={`side-btn ${s}`} onClick={() => setSheet(s)}>
+          <button key={s} type="button" className={`side-btn ${s}`} onClick={() => { setSheet(s); trackEvent("side_sheet", { side: s }); }}>
             <small>{s === "left" ? "On your left" : "On your right"}</small>
             <strong>{winLoading && !res.window?.length ? "…" : nowCounts[s]}</strong>
           </button>

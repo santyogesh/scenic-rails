@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Newsreader } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--display" });
 const body = Newsreader({ subsets: ["latin"], variable: "--body" });
@@ -13,5 +15,5 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#070b14" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (<html lang="en" className={`${display.variable} ${body.variable}`}><body>{children}</body></html>);
+  return (<html lang="en" className={`${display.variable} ${body.variable}`}><body>{children}<Analytics /><SpeedInsights /></body></html>);
 }
