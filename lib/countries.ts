@@ -176,15 +176,6 @@ const byCode = new Map(COUNTRIES.map((c) => [c.code, c]));
 export const getCountry = (code?: string | null): Country => byCode.get((code ?? "").toUpperCase()) ?? byCode.get(DEFAULT_COUNTRY)!;
 export const isCountry = (code?: string | null) => byCode.has((code ?? "").toUpperCase());
 
-/** Country from a browser locale such as "de-DE" or "en-GB"; India when it can't be told. */
-export function countryFromLocale(langs: readonly string[]): string {
-  for (const l of langs) {
-    const region = /-([A-Za-z]{2})\b/.exec(l)?.[1]?.toUpperCase();
-    if (region && byCode.has(region)) return region;
-  }
-  return DEFAULT_COUNTRY;
-}
-
 /** Minutes `tz` is ahead of UTC at `at`. */
 export function tzOffsetMin(tz: string, at = Date.now()): number {
   const p = Object.fromEntries(

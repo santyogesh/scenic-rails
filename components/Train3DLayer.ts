@@ -14,7 +14,7 @@ const MIN_LENGTH_PX = 110;
 const FPS_IDLE = 20;
 
 /**
- * A WAP-7 style electric loco built from simple shapes, drawn by Three.js inside MapLibre's WebGL context.
+ * A WAP-9 style electric loco (blue and white livery) built from simple shapes, drawn by Three.js inside MapLibre's WebGL context.
  * Model space is metres with Z up and the nose pointing +Y (north) before rotation.
  */
 export async function createTrain3D(id = "train-3d"): Promise<Train3D> {
@@ -44,9 +44,9 @@ export async function createTrain3D(id = "train-3d"): Promise<Train3D> {
   shadow.position.z = 0.05;
   loco.add(shadow);
 
-  box(3.1, 19, 3, 0xc8102e, 0, 0, 2.7); // body
-  box(3.14, 19.04, 0.5, 0xfde8c8, 0, 0, 2.55); // cream band
-  box(3.14, 19.04, 0.14, 0x1e3a8a, 0, 0, 2.18); // blue line
+  box(3.1, 19, 3, 0x1e40af, 0, 0, 2.7); // body
+  box(3.14, 19.04, 0.5, 0xf8fafc, 0, 0, 2.55); // white band
+  box(3.14, 19.04, 0.14, 0x38bdf8, 0, 0, 2.18); // light blue line
   box(2.7, 17, 0.35, 0x475569, 0, 0, 4.35); // roof
   for (const s of [1, -1]) box(2.5, 0.12, 0.9, 0x0f172a, 0, s * 9.52, 3.4); // windscreens
   for (const s of [1, -1]) box(0.12, 2.2, 0.8, 0x0f172a, s * 1.56, 7.6, 3.4); // cab side windows

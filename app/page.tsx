@@ -15,7 +15,7 @@ import WindowPanel from "@/components/WindowPanel";
 import PlaceToast from "@/components/PlaceToast";
 import SideSheet, { sheetRows } from "@/components/SideSheet";
 import CountryPicker from "@/components/CountryPicker";
-import { countryFromLocale, DEFAULT_COUNTRY, getCountry, isCountry, todayIn } from "@/lib/countries";
+import { DEFAULT_COUNTRY, getCountry, isCountry, todayIn } from "@/lib/countries";
 import type { Side } from "@/lib/side";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
@@ -90,12 +90,12 @@ export default function Home() {
   const journeyCountry = useRef(DEFAULT_COUNTRY);
   const countryInfo = getCountry(country);
 
-  // Country: the URL's, else the last one picked, else the browser's locale.
+  // Country: the URL's, else the last one picked, else India.
   useEffect(() => {
     let saved: string | null = null;
     try { saved = localStorage.getItem(COUNTRY_KEY); } catch {}
     const fromUrl = new URLSearchParams(location.search).get("c")?.toUpperCase();
-    setCountry(isCountry(fromUrl) ? fromUrl! : isCountry(saved) ? saved! : countryFromLocale(navigator.languages ?? [navigator.language]));
+    setCountry(isCountry(fromUrl) ? fromUrl! : isCountry(saved) ? saved! : DEFAULT_COUNTRY);
   }, []);
 
   function changeCountry(code: string) {
