@@ -33,8 +33,8 @@ export default function RoutesIndex() {
         <section>
           <h2>Following a train live</h2>
           <p>
-            Already on board, or planning a ride on another line? The <Link href="/">live train map</Link> takes an Indian Railways
-            train number or a list of stations, draws the route on the real track, and shows the landmarks you are passing on
+            Already on board, or planning a ride on another line? The <Link href="/">live train map</Link> takes a train number from
+            India, Europe, North America, Japan and more, or a list of stations, draws the route on the real track, and shows the landmarks you are passing on
             each side of the train as you travel.
           </p>
         </section>

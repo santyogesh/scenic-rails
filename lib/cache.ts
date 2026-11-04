@@ -17,7 +17,7 @@ function redis() {
   return client;
 }
 
-export const cacheKey = (ns: "win" | "near", key: string) => `${ns}:${VERSION}:${key}`;
+export const cacheKey = (ns: "win" | "near" | "tr", key: string) => `${ns}:${VERSION}:${key}`;
 
 function withTimeout<T>(p: Promise<T>): Promise<T | null> {
   return Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), TIMEOUT_MS))]);

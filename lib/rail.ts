@@ -175,9 +175,10 @@ export async function pool<T, R>(items: T[], n: number, fn: (x: T, i: number) =>
   return out;
 }
 
-export async function geocodeStop(name: string): Promise<Stop | null> {
+/** `country` is an ISO code; India's station list is used when it's absent. */
+export async function geocodeStop(name: string, country?: string): Promise<Stop | null> {
   try {
-    const r = await tfetch(`/api/train?station=${encodeURIComponent(name)}`, {}, 10000);
+    const r = await tfetch(`/api/train?station=${encodeURIComponent(name)}${country ? `&c=${country}` : ""}`, {}, 10000);
     if (!r.ok) return null;
     return (await r.json()).stop ?? null;
   } catch { return null; }

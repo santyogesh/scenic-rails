@@ -321,6 +321,15 @@ form>button{min-height:48px;min-width:72px}
   .quick{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;padding-bottom:4px;scrollbar-width:none}
   .quick button{flex:none}
 }
+
+/* Country picker: native select stretched invisibly over a flag + code chip */
+.country-picker{position:relative;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:999px;font-family:var(--display),system-ui,sans-serif;font-size:.9rem;font-weight:700;color:var(--ink);cursor:pointer}
+.country-picker select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.country-picker select option{color:#0f172a}
+.country-picker:focus-within{outline:2px solid var(--amber);outline-offset:2px}
+.hero>.country-picker{position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 14px);right:14px}
+.bar .country-picker.in-bar{flex:none;min-height:44px;padding:0 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);box-shadow:none;backdrop-filter:none}
+@media(max-width:700px){.bar .country-picker.in-bar .country-code{display:none}}
 .sheet-card{flex:none}
 @media(max-width:700px){
   .live-hud.closed .live-hud-actions .live-action-btn:first-child{display:none}

@@ -20,7 +20,8 @@ export default function About() {
         <section>
           <h2>What the site does</h2>
           <p>
-            Enter an Indian Railways train number, or a list of stations anywhere in the world, and the <Link href="/">live train map</Link> draws
+            Pick a country in the top-right corner, then enter a train number (such as 12951 in India or ICE 371 in Germany) or a
+            list of stations, and the <Link href="/">live train map</Link> draws
             the route on the actual rail track. It then finds landmarks, rivers, mountains, forts and towns within a few kilometres
             of the line and tells you whether each one will appear on your left or your right. If the train is running, the map
             follows its position so the list updates as you travel.
@@ -37,6 +38,12 @@ export default function About() {
             from Wikipedia and Wikimedia Commons. Indian train timetables and running positions come from public railway
             information services; positions may be estimated from the timetable when live data is unavailable, and the map
             says so when that happens.
+          </p>
+          <p>
+            Outside India, timetables and real-time times come from <a href="https://transitous.org" target="_blank" rel="noreferrer">Transitous</a>,
+            a community-run journey planner built on the open-source MOTIS engine and open GTFS feeds. When a train isn&apos;t
+            found there, its route and stops are taken from OpenStreetMap train relations, and stations are located
+            with <a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a>, an open-source geocoder for OpenStreetMap data.
           </p>
           <p>
             Timings, positions and landmark details can be wrong or out of date. Always check official railway sources before

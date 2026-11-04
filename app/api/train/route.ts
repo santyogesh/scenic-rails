@@ -3,6 +3,9 @@ import { markStops, type LiveTrainStatus, type Stop, type StopTime } from "@/lib
 import { popularTrains, computeLiveStatusFromSchedule } from "@/data/popularTrains";
 import { erailTrain } from "@/lib/erail";
 import { findStation } from "@/lib/stations";
+import { isCountry } from "@/lib/countries";
+import { geocodeStops } from "@/lib/transitous";
+import { UA as OSM_UA } from "@/lib/overpass";
 
 const BASE = "https://api.railradar.in/v1";
 
@@ -172,6 +175,33 @@ async function searchStation(q: string) {
   return null;
 }
 
+const PHOTON = "https://photon.komoot.io/api/";
+
+async function intlStation(q: string, country: string): Promise<{ name: string; code: string; at: LL } | null> {
+  const cacheKey = `station_${country}_${q.toLowerCase()}`;
+  const cached = getCached<{ name: string; code: string; at: LL }>(cacheKey);
+  if (cached) return cached;
+  let res: { name: string; code: string; at: LL } | null = null;
+  try {
+    const s = (await geocodeStops(q, country))[0];
+    if (s) res = { name: s.name, code: s.id, at: s.at };
+  } catch {}
+  if (!res) {
+    try {
+      const sp = new URLSearchParams({ q, limit: "10" });
+      for (const tag of ["railway:station", "railway:halt", "public_transport:station"]) sp.append("osm_tag", tag);
+      const r = await fetch(`${PHOTON}?${sp}`, { headers: { "User-Agent": OSM_UA }, signal: AbortSignal.timeout(8000) });
+      if (r.ok) {
+        const f = ((await r.json())?.features ?? []).find((x: any) => x?.properties?.countrycode?.toUpperCase() === country);
+        const [lng, lat] = f?.geometry?.coordinates ?? [];
+        if (typeof lng === "number" && typeof lat === "number") res = { name: f.properties.name ?? q, code: `osm${f.properties.osm_id ?? ""}`, at: [lng, lat] };
+      }
+    } catch {}
+  }
+  if (res) setCache(cacheKey, res, 86400000);
+  return res;
+}
+
 async function fetchTrainRouteCoords(trainNo: string): Promise<LL[]> {
   const cacheKey = `route_coords_${trainNo}`;
   const cached = getCached<LL[]>(cacheKey);
@@ -205,10 +235,11 @@ export async function GET(req: Request) {
     return Response.json({ error: "Station name is too long." }, { status: 400 });
   }
 
-  // 1. Station search via RailRadar
+  // 1. Station search: RailRadar in India; Transitous, then Photon (OpenStreetMap) elsewhere
   if (stationQuery) {
+    const c = (sp.get("c") ?? "IN").toUpperCase();
     try {
-      const stop = await searchStation(stationQuery);
+      const stop = c === "IN" || !isCountry(c) ? await searchStation(stationQuery) : await intlStation(stationQuery, c);
       if (!stop) return Response.json({ error: "Station not found." }, { status: 404 });
       return Response.json({ stop });
     } catch {

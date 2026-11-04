@@ -41,7 +41,7 @@ export default function Plan() {
           duration = j.duration || "";
         } else {
           setMsg("Locating stations");
-          const found = await pool(j.stops as string[], 4, geocodeStop);
+          const found = await pool(j.stops as string[], 4, (s) => geocodeStop(s));
           stops = found.filter((s): s is Stop => Boolean(s));
           if (stops.length < 2) throw new Error("Could not locate enough stations on the map.");
           const built = await buildTrack(stops, setMsg);
@@ -52,7 +52,7 @@ export default function Plan() {
         }
       } else {
         setMsg("Locating stations");
-        const found = await pool(list, 4, geocodeStop);
+        const found = await pool(list, 4, (s) => geocodeStop(s));
         stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate enough stations on the map.");
         const built = await buildTrack(stops, setMsg);

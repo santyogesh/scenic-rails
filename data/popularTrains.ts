@@ -1,5 +1,6 @@
 import type { Stop, LiveTrainStatus } from "@/lib/rail";
 import type { LL } from "@/lib/geo";
+import { startOfDay, todayIn } from "@/lib/countries";
 import railLines from "./trainLines.json";
 
 export type PopularTrain = {
@@ -124,14 +125,16 @@ export const popularTrains: Record<string, PopularTrain> = Object.fromEntries(
   Object.entries(trains).map(([no, t]) => [no, { ...t, line: (railLines as unknown as Record<string, LL[]>)[no] ?? t.halts.map((h) => h.at) }])
 );
 
-/** Minutes since 00:00 IST on `date` (YYYY-MM-DD). */
-function minutesSince(date: string): number {
-  return (Date.now() - Date.parse(`${date}T00:00:00+05:30`)) / 60000;
+/** Minutes since 00:00 on `date` (YYYY-MM-DD) in `tz`. */
+function minutesSince(date: string, tz: string): number {
+  return (Date.now() - startOfDay(date, tz)) / 60000;
 }
 
+/** `tz` is the timezone the halts' times are in. */
 export function computeLiveStatusFromSchedule(
   train: Pick<PopularTrain, "number" | "name" | "halts" | "distance">,
-  startDate?: string
+  startDate?: string,
+  tz = "Asia/Kolkata"
 ): LiveTrainStatus {
   const parseTime = (tStr?: string): number | null => {
     if (!tStr) return null;
@@ -158,8 +161,7 @@ export function computeLiveStatusFromSchedule(
   const firstDep = times[0].dep;
   const lastArr = times[times.length - 1].arr;
 
-  const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
-  let elapsed = minutesSince(startDate ?? today);
+  let elapsed = minutesSince(startDate ?? todayIn(tz), tz);
   // Without an explicit date, prefer yesterday's run if it is still on the move.
   if (!startDate && elapsed < firstDep && elapsed + 1440 <= lastArr) elapsed += 1440;
 

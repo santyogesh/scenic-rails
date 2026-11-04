@@ -14,6 +14,8 @@ import { wikiSummary, wikiWindow } from "@/lib/wikiWindow";
 import WindowPanel from "@/components/WindowPanel";
 import PlaceToast from "@/components/PlaceToast";
 import SideSheet, { sheetRows } from "@/components/SideSheet";
+import CountryPicker from "@/components/CountryPicker";
+import { countryFromLocale, DEFAULT_COUNTRY, getCountry, isCountry, todayIn } from "@/lib/countries";
 import type { Side } from "@/lib/side";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
@@ -30,43 +32,43 @@ type Result = {
   startDate?: string;
   /** What was searched: a train number or comma-separated stations. */
   query?: string;
+  /** ISO country the journey was searched in; India when absent (journeys saved before countries existed). */
+  country?: string;
+  /** Transitous trip, for refreshing real-time times outside India. */
+  tripId?: string;
 };
 
-const QUICK_TRAINS = [
-  { no: "12951", label: "Mumbai → Delhi Rajdhani" },
-  { no: "12952", label: "Delhi → Mumbai Rajdhani" },
-  { no: "12301", label: "Howrah → Delhi Rajdhani" },
-  { no: "12002", label: "Delhi → Bhopal Shatabdi" },
-  { no: "20901", label: "Mumbai → Gandhinagar Vande Bharat" },
-];
 const LAST_KEY = "scenic:last";
+const COUNTRY_KEY = "scenic:country";
 const LAST_MAX_AGE_MS = 12 * 3600000;
 
-const isTrainNo = (s: string) => /^\d{4,6}$/.test(s);
+const isTrainNo = (s: string, country?: string) => getCountry(country).trainPattern.test(s);
 
-/** The shareable URL of a journey: /?train=12951&date=2026-11-02 or /?q=Stn1,Stn2 */
-function journeyPath(query: string, date?: string) {
-  return isTrainNo(query) ? `/?train=${query}${date ? `&date=${date}` : ""}` : `/?q=${encodeURIComponent(query)}`;
+/** The shareable URL of a journey: /?train=12951&date=2026-11-02, /?train=ICE%20371&c=DE or /?q=Stn1,Stn2 */
+function journeyPath(query: string, date?: string, country?: string) {
+  const c = country && country !== DEFAULT_COUNTRY ? `&c=${country}` : "";
+  return isTrainNo(query, country) ? `/?train=${encodeURIComponent(query)}${date ? `&date=${date}` : ""}${c}` : `/?q=${encodeURIComponent(query)}${c}`;
 }
 
 const resPath = (r: Result | null) => {
   const query = r?.query ?? r?.trainNumber;
-  return query ? journeyPath(query, r?.startDate) : null;
+  return query ? journeyPath(query, r?.startDate, r?.country) : null;
 };
 
-function urlJourney(): { query: string; date?: string } | null {
+function urlJourney(): { query: string; date?: string; country?: string } | null {
   const sp = new URLSearchParams(location.search);
   const query = (sp.get("train") ?? sp.get("q") ?? "").trim();
-  return query ? { query, date: sp.get("date") ?? undefined } : null;
+  const c = sp.get("c")?.toUpperCase();
+  return query ? { query, date: sp.get("date") ?? undefined, country: isCountry(c) ? c : undefined } : null;
 }
 
-/** Today and the 4 previous days in IST, as journey start dates. */
-function startDates(): { value: string; label: string }[] {
-  const ist = Date.now() + 5.5 * 3600000;
+/** Today and the 4 previous days in `tz`, as journey start dates. */
+function startDates(tz: string): { value: string; label: string }[] {
+  const today = Date.parse(todayIn(tz));
   return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(ist - i * 86400000);
+    const d = new Date(today - i * 86400000);
     const value = d.toISOString().slice(0, 10);
-    const label = i === 0 ? "Today" : i === 1 ? "Yesterday" : d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+    const label = i === 0 ? "Today" : i === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
     return { value, label };
   });
 }
@@ -83,6 +85,25 @@ export default function Home() {
   const [sheet, setSheet] = useState<Side | null>(null);
   const [keepAwake, setKeepAwake] = useState(true), [liveOkAt, setLiveOkAt] = useState(0), [liveFailing, setLiveFailing] = useState(false);
   const [, setTick] = useState(0);
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
+  /** Country of the journey on screen, read by the landmark loader. */
+  const journeyCountry = useRef(DEFAULT_COUNTRY);
+  const countryInfo = getCountry(country);
+
+  // Country: the URL's, else the last one picked, else the browser's locale.
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(COUNTRY_KEY); } catch {}
+    const fromUrl = new URLSearchParams(location.search).get("c")?.toUpperCase();
+    setCountry(isCountry(fromUrl) ? fromUrl! : isCountry(saved) ? saved! : countryFromLocale(navigator.languages ?? [navigator.language]));
+  }, []);
+
+  function changeCountry(code: string) {
+    setCountry(code);
+    try { localStorage.setItem(COUNTRY_KEY, code); } catch {}
+    if (!urlJourney()) history.replaceState(history.state, "", code === DEFAULT_COUNTRY ? "/" : `/?c=${code}`);
+    trackEvent("country", { country: code });
+  }
 
   // Open the journey in the URL (a reload or shared link); otherwise bring back the last one after a dropped connection.
   useEffect(() => {
@@ -92,8 +113,9 @@ export default function Home() {
       saved = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
     } catch {}
     const fresh = saved && saved.res?.line?.length >= 2 && Date.now() - saved.at < LAST_MAX_AGE_MS ? saved : null;
-    const wanted = fromUrl ? journeyPath(fromUrl.query, fromUrl.date) : null;
+    const wanted = fromUrl ? journeyPath(fromUrl.query, fromUrl.date, fromUrl.country) : null;
     if (fresh && (!wanted || resPath(fresh.res) === wanted)) {
+      journeyCountry.current = fresh.res.country ?? DEFAULT_COUNTRY;
       setRes(fresh.res);
       setLiveOkAt(fresh.at);
       restored.current = true;
@@ -103,7 +125,7 @@ export default function Home() {
       else if (!fresh.res.window?.length) loadWindow(fresh.res.line);
     } else if (fromUrl) {
       setQ(fromUrl.query);
-      runSearch(fromUrl.query, fromUrl.date, "none");
+      runSearch(fromUrl.query, fromUrl.date, "none", fromUrl.country ?? DEFAULT_COUNTRY);
     }
   }, []);
 
@@ -136,13 +158,13 @@ export default function Home() {
   }, [liveFailing]);
   const [dates, setDates] = useState<{ value: string; label: string }[]>([]), [startDate, setStartDate] = useState("");
 
-  // Built on the client so "Today" is the visitor's current IST date, not the build date.
+  // Built on the client so "Today" is the current date in the country's timezone, not the build date.
   useEffect(() => {
-    const d = startDates();
+    const d = startDates(getCountry(country).tz);
     setDates(d);
     const urlDate = urlJourney()?.date;
     setStartDate(d.some((x) => x.value === urlDate) ? urlDate! : d[0].value);
-  }, []);
+  }, [country]);
 
   useEffect(() => {
     setSummary(null);
@@ -227,7 +249,7 @@ export default function Home() {
     const track = makeTrack(line);
     const jobs = [
       wikiWindow(track, Date.now() + 40000),
-      server(["bharatlas"]),
+      ...(journeyCountry.current === "IN" ? [server(["bharatlas"])] : []),
       ...segments(track, 120, 2).map((s) => limited(() => server(["osm"], s.line, s.startKm))),
     ];
     let pending = jobs.length;
@@ -267,9 +289,15 @@ export default function Home() {
   const refreshLiveStatus = async (real = true) => {
     if (!res?.trainNumber) return;
     if (!real && Date.now() < realUntil.current) return;
+    const intl = res.country && res.country !== DEFAULT_COUNTRY;
+    if (intl && !res.tripId) return;
     try {
       const date = res.startDate ? `&date=${res.startDate}` : "";
-      const r = await fetch(`/api/train?no=${encodeURIComponent(res.trainNumber)}&liveOnly=1${date}${real ? "&real=1" : ""}`);
+      const r = await fetch(
+        intl
+          ? `/api/train/intl?liveOnly=1&c=${res.country}&trip=${encodeURIComponent(res.tripId!)}${date}`
+          : `/api/train?no=${encodeURIComponent(res.trainNumber)}&liveOnly=1${date}${real ? "&real=1" : ""}`
+      );
       if (r.ok) {
         const j = await r.json();
         if (j.liveStatus) {
@@ -332,15 +360,16 @@ export default function Home() {
   const onHistory = useRef<() => void>(() => {});
   onHistory.current = () => {
     const u = urlJourney();
-    const wanted = u ? journeyPath(u.query, u.date) : null;
+    const wanted = u ? journeyPath(u.query, u.date, u.country) : null;
     if (wanted === resPath(res)) return;
     if (!u) {
       clearJourney();
       return;
     }
     setQ(u.query);
+    if (u.country) setCountry(u.country);
     if (u.date && dates.some((d) => d.value === u.date)) setStartDate(u.date);
-    runSearch(u.query, u.date, "none");
+    runSearch(u.query, u.date, "none", u.country ?? DEFAULT_COUNTRY);
   };
   useEffect(() => {
     const onPop = () => onHistory.current();
@@ -350,13 +379,15 @@ export default function Home() {
 
   function go(e: React.FormEvent) {
     e.preventDefault();
-    runSearch(q.trim(), startDate, "push");
+    runSearch(q.trim(), startDate, "push", country);
   }
 
   /** `historyMode` "push" adds a history entry for the journey; "none" when the URL already names it (load, Back/Forward). */
-  async function runSearch(t: string, date: string | undefined, historyMode: "push" | "none") {
+  async function runSearch(t: string, date: string | undefined, historyMode: "push" | "none", cc: string) {
     setBusy(true); setMsg("Starting…");
     const startDate = date ?? "";
+    const intl = cc !== DEFAULT_COUNTRY;
+    const findStop = (s: string) => geocodeStop(s, intl ? cc : undefined);
     try {
       let line: LL[] = [];
       let stops: Stop[] = [];
@@ -364,13 +395,16 @@ export default function Home() {
       let waypoints: LL[] = [];
       let liveStatus: LiveTrainStatus | null = null;
       let trainNumber: string | undefined = undefined;
+      let tripId: string | undefined = undefined;
 
-      if (/^\d{4,6}$/.test(t)) {
+      if (isTrainNo(t, cc)) {
         trainNumber = t;
-        setMsg("Looking up train " + t + "…");
-        const r = await fetch(`/api/train?no=${t}${startDate ? `&date=${startDate}` : ""}`, { signal: AbortSignal.timeout(20000) }), j = await r.json();
+        setMsg(intl ? `Looking for train ${t} in ${getCountry(cc).name}…` : "Looking up train " + t + "…");
+        const dateQs = startDate ? `&date=${startDate}` : "";
+        const r = await fetch(intl ? `/api/train/intl?no=${encodeURIComponent(t)}&c=${cc}${dateQs}` : `/api/train?no=${t}${dateQs}`, { signal: AbortSignal.timeout(intl ? 58000 : 20000) }), j = await r.json();
         if (!r.ok) throw new Error(j.error);
         liveStatus = j.liveStatus || null;
+        tripId = typeof j.tripId === "string" ? j.tripId : undefined;
         if (Array.isArray(j.stationStops) && j.stationStops.length >= 2) {
           stops = j.stationStops;
         }
@@ -380,7 +414,7 @@ export default function Home() {
           title = j.title || `${j.stops[0]} to ${j.stops[j.stops.length - 1]}`;
         } else {
           const list: string[] = j.stops;
-          const found = await pool(list, 4, geocodeStop);
+          const found = await pool(list, 4, findStop);
           stops = found.filter((s): s is Stop => Boolean(s));
           if (stops.length < 2) throw new Error("Could not locate those stations.");
           line = waypoints = stops.map((s) => s.at);
@@ -390,7 +424,7 @@ export default function Home() {
         const list = t.split(",").map((s) => s.trim()).filter(Boolean);
         if (list.length < 2) throw new Error("Enter a train number, or at least two stations separated by commas.");
         setMsg("Locating stations…");
-        const found = await pool(list, 4, geocodeStop);
+        const found = await pool(list, 4, findStop);
         stops = found.filter((s): s is Stop => Boolean(s));
         if (stops.length < 2) throw new Error("Could not locate those stations. Try adding the city name.");
         line = waypoints = stops.map((s) => s.at);
@@ -404,7 +438,8 @@ export default function Home() {
       winReq.current++;
       railReq.current++;
       setTracing(false);
-      const next: Result = { line, approx: rough ? [[0, line.length - 1]] : [], stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber && startDate ? startDate : undefined, query: t };
+      const next: Result = { line, approx: rough ? [[0, line.length - 1]] : [], stops, window: null, title, liveStatus, trainNumber, startDate: trainNumber && startDate ? startDate : undefined, query: t, country: cc, tripId };
+      journeyCountry.current = cc;
       setRes(next);
       if (historyMode === "push") {
         history.pushState(history.state, "", resPath(next));
@@ -417,13 +452,13 @@ export default function Home() {
       setFocusAt(null);
       setBusy(false);
       setMsg("");
-      trackEvent("search", { type: trainNumber ? "train" : "stations", train: trainNumber ?? null, live: !!liveStatus?.isLive });
+      trackEvent("search", { type: trainNumber ? "train" : "stations", train: trainNumber ?? null, live: !!liveStatus?.isLive, country: cc });
 
       // Then trace the real track if needed, and find what's outside the window along it, in the background
       if (rough) refineTrack(waypoints, line);
       else loadWindow(line);
     } catch (err) {
-      trackEvent("search_failed", { query: t.slice(0, 60) });
+      trackEvent("search_failed", { query: t.slice(0, 60), country: cc });
       if (historyMode === "none" && !res) history.replaceState(history.state, "", "/");
       setMsg(err instanceof Error && ["TimeoutError", "AbortError"].includes(err.name) ? "That took too long. Try again, or list fewer stations." : err instanceof Error ? err.message : "Something went wrong.");
       setBusy(false);
@@ -460,6 +495,7 @@ export default function Home() {
             {liveFailing && liveOkAt ? ` · last updated ${Math.max(1, Math.round((Date.now() - liveOkAt) / 60000))} min ago` : ""}
           </span>
         </div>
+        <CountryPicker className="in-bar" value={res.country ?? DEFAULT_COUNTRY} onChange={(c) => { changeCountry(c); setQ(""); newSearch(); }} />
         {res.liveStatus && "wakeLock" in navigator && (
           <button type="button" className={`bar-icon ${keepAwake ? "on" : ""}`} onClick={() => { setKeepAwake((k) => !k); trackEvent("keep_awake", { on: !keepAwake }); }} aria-pressed={keepAwake} aria-label="Keep screen on" title={keepAwake ? "Screen stays on" : "Screen may sleep"}>
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -523,11 +559,12 @@ export default function Home() {
   return (
     <main className="hero" data-ptr>
       <Globe />
+      <CountryPicker value={country} onChange={changeCountry} />
       <div className="center">
         <h1>Scenic<br />Rails</h1>
         <form onSubmit={go} className="glass">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Train no. or stations, e.g. 12951" aria-label="Train number or stations" enterKeyHint="go" autoComplete="off" />
-          {/^\d{4,6}$/.test(q.trim()) && dates.length > 0 && (
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={countryInfo.example} aria-label={`Train number or stations in ${countryInfo.name}`} enterKeyHint="go" autoComplete="off" />
+          {isTrainNo(q.trim(), country) && dates.length > 0 && (
             <label className="start-date">
               <span>Started</span>
               <select value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Train started on">
@@ -537,8 +574,8 @@ export default function Home() {
           )}
           <button disabled={busy || !q.trim()}>{busy ? "…" : "Go"}</button>
         </form>
-        <div className="quick" aria-label="Popular trains">
-          {QUICK_TRAINS.map((t) => (
+        <div className="quick" aria-label={`Popular trains in ${countryInfo.name}`}>
+          {countryInfo.quick.map((t) => (
             <button key={t.no} type="button" onClick={() => setQ(t.no)} className={q.trim() === t.no ? "on" : ""}>
               <strong>{t.no}</strong> {t.label}
             </button>

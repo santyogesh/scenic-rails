@@ -106,8 +106,8 @@ export function osmText(t: Record<string, string>, kind: WindowKind): string {
   const pretty = (s?: string) => (s ? s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "");
   if (t.description) bits.push(t.description);
   switch (kind) {
-    case "hill": bits.push(`${pretty(t.natural) || "Hill"}${t.ele ? `, ${Math.round(Number(t.ele)).toLocaleString("en-IN")} m high` : ""}`); break;
-    case "town": bits.push(`${pretty(t.place)}${t.population ? ` of about ${Number(t.population).toLocaleString("en-IN")} people` : ""}`); break;
+    case "hill": bits.push(`${pretty(t.natural) || "Hill"}${t.ele ? `, ${Math.round(Number(t.ele)).toLocaleString()} m high` : ""}`); break;
+    case "town": bits.push(`${pretty(t.place)}${t.population ? ` of about ${Number(t.population).toLocaleString()} people` : ""}`); break;
     case "worship": bits.push(`${t.religion ? pretty(t.religion) + " " : ""}place of worship`); break;
     case "fort":
     case "heritage": bits.push(`${pretty(t.historic || t.tourism) || "Historic site"}${t.start_date ? `, dating from ${t.start_date}` : ""}`); break;
