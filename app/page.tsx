@@ -14,6 +14,7 @@ import { wikiSummary, wikiWindow } from "@/lib/wikiWindow";
 import WindowPanel from "@/components/WindowPanel";
 import PlaceToast from "@/components/PlaceToast";
 import SideSheet, { sheetRows } from "@/components/SideSheet";
+import TimelineSheet from "@/components/TimelineSheet";
 import CountryPicker from "@/components/CountryPicker";
 import { DEFAULT_COUNTRY, getCountry, isCountry, todayIn } from "@/lib/countries";
 import type { Side } from "@/lib/side";
@@ -83,6 +84,7 @@ export default function Home() {
   const restored = useRef(false), pushedJourney = useRef(false);
   const [tracing, setTracing] = useState(false);
   const [sheet, setSheet] = useState<Side | null>(null);
+  const [timeline, setTimeline] = useState(false);
   const [keepAwake, setKeepAwake] = useState(true), [liveOkAt, setLiveOkAt] = useState(0), [liveFailing, setLiveFailing] = useState(false);
   const [, setTick] = useState(0);
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
@@ -341,6 +343,7 @@ export default function Home() {
     setTracing(false);
     setWinLoading(false);
     setSheet(null);
+    setTimeline(false);
     setSel(null);
     setRes(null);
     pushedJourney.current = false;
@@ -522,6 +525,10 @@ export default function Home() {
       />
       <PlaceToast at={toastAt} items={res.window} />
       <nav className="side-bar" aria-label="What's outside the window">
+        <button type="button" className="timeline-btn" onClick={() => { setTimeline(true); trackEvent("timeline"); }}>
+          <span>Show timeline of sights from whole journey</span>
+          <strong>{winLoading && !res.window?.length ? "…" : res.window?.length ?? 0}</strong>
+        </button>
         {(["left", "right"] as Side[]).map((s) => (
           <button key={s} type="button" className={`side-btn ${s}`} onClick={() => { setSheet(s); trackEvent("side_sheet", { side: s }); }}>
             <small>{s === "left" ? "On your left" : "On your right"}</small>
@@ -540,6 +547,19 @@ export default function Home() {
           refKm={refKm}
           trainAt={trainAt}
           heading={heading}
+        />
+      )}
+      {timeline && (
+        <TimelineSheet
+          items={res.window}
+          stops={res.stops}
+          line={res.line}
+          live={res.liveStatus}
+          refKm={refKm}
+          loading={winLoading}
+          onPick={pickWindow}
+          onShowOnMap={(at) => { setTimeline(false); setFocusAt(at); }}
+          onClose={() => setTimeline(false)}
         />
       )}
       {sel && (

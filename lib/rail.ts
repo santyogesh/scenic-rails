@@ -71,11 +71,11 @@ export type LiveTrainStatus = {
   totalDistance?: number;
 };
 
-const toMin = (t?: string) => {
+export const toMin = (t?: string) => {
   const m = t && /^(\d{1,2}):(\d{2})/.exec(t);
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
-const fromMin = (n: number) => {
+export const fromMin = (n: number) => {
   const d = ((Math.round(n) % 1440) + 1440) % 1440;
   return `${String(Math.floor(d / 60)).padStart(2, "0")}:${String(d % 60).padStart(2, "0")}`;
 };

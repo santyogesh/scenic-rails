@@ -18,7 +18,8 @@ export function useBackClose(open: boolean, close: () => void, key: string) {
     } else {
       history.pushState({ ...history.state, overlay: key }, "");
     }
-    const onPop = () => closeRef.current();
+    // Landing back on our own entry means an overlay opened on top of this one was closed.
+    const onPop = () => history.state?.overlay !== key && closeRef.current();
     addEventListener("popstate", onPop);
     return () => {
       removeEventListener("popstate", onPop);
