@@ -21,6 +21,9 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
+      <head>
+        <script src="https://quge5.com/88/tag.min.js" data-zone="309215" async data-cfasync="false" />
+      </head>
       <body>{children}<PullToRefresh /><Analytics /><SpeedInsights /></body>
     </html>
   );
