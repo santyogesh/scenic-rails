@@ -60,7 +60,7 @@ export default function Plan() {
         bad = built.bad;
         place = `${stops[0].name} to ${stops[stops.length - 1].name}`;
       }
-      setRoute({ slug: "plan", name: routeName, place, distance, duration, blurb: "", line, stops, sights: [] });
+      setRoute({ slug: "plan", name: routeName, place, region: "", distance, duration, blurb: "", line, stops, sights: [] });
       setBusy(false);
       setMsg(bad ? `${bad} stretch(es) are drawn straight because track data was missing.` : "");
       findSights(line, () => {}).then((sights) => {

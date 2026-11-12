@@ -17,6 +17,8 @@ import SideSheet, { sheetRows } from "@/components/SideSheet";
 import TimelineSheet from "@/components/TimelineSheet";
 import CountryPicker from "@/components/CountryPicker";
 import { DEFAULT_COUNTRY, getCountry, isCountry, todayIn } from "@/lib/countries";
+import { guides } from "@/data/guides";
+import { routesByRegion } from "@/data/routes";
 import type { Side } from "@/lib/side";
 const Globe = dynamic(() => import("@/components/Globe"), { ssr: false });
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
@@ -578,38 +580,73 @@ export default function Home() {
   );
   return (
     <main className="hero" data-ptr>
-      <Globe />
-      <CountryPicker value={country} onChange={changeCountry} />
-      <div className="center">
-        <h1>Scenic<br />Rails</h1>
-        <form onSubmit={go} className="glass">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={countryInfo.example} aria-label={`Train number or stations in ${countryInfo.name}`} enterKeyHint="go" autoComplete="off" />
-          {isTrainNo(q.trim(), country) && dates.length > 0 && (
-            <label className="start-date">
-              <span>Started</span>
-              <select value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Train started on">
-                {dates.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-              </select>
-            </label>
-          )}
-          <button disabled={busy || !q.trim()}>{busy ? "…" : "Go"}</button>
-        </form>
-        <div className="quick" aria-label={`Popular trains in ${countryInfo.name}`}>
-          {countryInfo.quick.map((t) => (
-            <button key={t.no} type="button" onClick={() => setQ(t.no)} className={q.trim() === t.no ? "on" : ""}>
-              <strong>{t.no}</strong> {t.label}
-            </button>
-          ))}
+      <div className="hero-top">
+        <Globe />
+        <CountryPicker value={country} onChange={changeCountry} />
+        <div className="center">
+          <h1>Scenic<br />Rails</h1>
+          <form onSubmit={go} className="glass">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={countryInfo.example} aria-label={`Train number or stations in ${countryInfo.name}`} enterKeyHint="go" autoComplete="off" />
+            {isTrainNo(q.trim(), country) && dates.length > 0 && (
+              <label className="start-date">
+                <span>Started</span>
+                <select value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Train started on">
+                  {dates.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              </label>
+            )}
+            <button disabled={busy || !q.trim()}>{busy ? "…" : "Go"}</button>
+          </form>
+          <div className="quick" aria-label={`Popular trains in ${countryInfo.name}`}>
+            {countryInfo.quick.map((t) => (
+              <button key={t.no} type="button" onClick={() => setQ(t.no)} className={q.trim() === t.no ? "on" : ""}>
+                <strong>{t.no}</strong> {t.label}
+              </button>
+            ))}
+          </div>
+          <Link href="/look" className="look-entry">Look around with camera</Link>
+          <p className="status" role="status">{busy && <i className="spin" />}{msg}</p>
+          <nav className="home-links" aria-label="Site">
+            <Link href="/routes">Scenic route guides</Link>
+            <Link href="/guides">Practical guides</Link>
+            <Link href="/about">About</Link>
+            <Link href="/privacy">Privacy</Link>
+          </nav>
         </div>
-        <Link href="/look" className="look-entry">Look around with camera</Link>
-        <p className="status" role="status">{busy && <i className="spin" />}{msg}</p>
-        <nav className="home-links" aria-label="Site">
-          <Link href="/routes">Scenic route guides</Link>
-          <Link href="/about">About</Link>
-          <Link href="/contact">Contact</Link>
-          <Link href="/privacy">Privacy</Link>
-        </nav>
       </div>
+      <section className="home-band" aria-label="Guides">
+        <div className="home-band-inner">
+          <h2>Scenic route guides</h2>
+          <p className="doc-lede">What you will see from the window, when to go, and which side of the carriage to sit on.</p>
+          {routesByRegion().map((group) => (
+            <section key={group.region}>
+              <h2>{group.region}</h2>
+              <ul className="doc-cards">
+                {group.routes.map((r) => (
+                  <li key={r.slug}>
+                    <Link href={`/routes/${r.slug}`}>
+                      <strong>{r.name}</strong>
+                      <small>{r.place} · {r.distance} · {r.duration}</small>
+                      <span>{r.blurb}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          <h2>Practical guides</h2>
+          <ul className="doc-cards">
+            {guides.map((g) => (
+              <li key={g.slug}>
+                <Link href={`/guides/${g.slug}`}>
+                  <strong>{g.title}</strong>
+                  <span>{g.description}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
     </main>
   );
 }

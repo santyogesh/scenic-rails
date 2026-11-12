@@ -30,6 +30,9 @@ export default function About() {
             The <Link href="/routes">scenic route guides</Link> are written guides to well-known railway journeys, covering their history,
             the views along the way, the best time of year to go, and practical advice on booking.
           </p>
+          <p>
+            Two shorter pieces sit with them: <Link href="/guides/which-side">which side of the train to sit on</Link>, and <Link href="/guides/how-the-map-works">how the live map decides what you are passing</Link>.
+          </p>
         </section>
         <section>
           <h2>Where the data comes from</h2>

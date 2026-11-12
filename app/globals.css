@@ -4,7 +4,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 h1,h2,button{font-family:var(--display),system-ui,sans-serif}
 :focus-visible{outline:3px solid var(--amber);outline-offset:2px}
 .glass{background:rgba(14,20,36,.62);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.14);box-shadow:0 20px 60px rgba(0,0,0,.5)}
-.hero{position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,#122040 0,var(--bg) 65%)}
+.hero{position:fixed;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg)}
 .globe{position:absolute;inset:0}
 .center{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;pointer-events:none}
 .center>*{pointer-events:auto}
@@ -307,8 +307,9 @@ form button:disabled{opacity:.5}
   .side-btn{min-height:58px}
 }
 
-/* Home: big input and quick-pick trains */
-.hero{height:100dvh}
+/* Home: big input and quick-pick trains. The search screen scrolls; the journey map does not. */
+.hero-top{position:relative;min-height:100dvh;display:flex;flex-direction:column;background:radial-gradient(circle at 50% 45%,#122040 0,var(--bg) 65%)}
+.hero-top .center{height:auto;flex:1;min-height:100dvh}
 .center{justify-content:flex-start;padding:calc(env(safe-area-inset-top) + 12vh) 16px calc(env(safe-area-inset-bottom) + 24px)}
 form{min-height:60px}
 form input{font-size:1.1rem;padding:16px 18px}
@@ -327,7 +328,7 @@ form>button{min-height:48px;min-width:72px}
 .country-picker select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
 .country-picker select option{color:#0f172a}
 .country-picker:focus-within{outline:2px solid var(--amber);outline-offset:2px}
-.hero>.country-picker{position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 14px);right:14px}
+.hero-top>.country-picker{position:absolute;z-index:3;top:calc(env(safe-area-inset-top) + 14px);right:14px}
 .bar .country-picker.in-bar{flex:none;min-height:44px;padding:0 10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);box-shadow:none;backdrop-filter:none}
 @media(max-width:700px){.bar .country-picker.in-bar .country-code{display:none}}
 .sheet-card{flex:none}
@@ -373,12 +374,16 @@ form>button{min-height:48px;min-width:72px}
 .home-links{margin-top:auto;display:flex;flex-wrap:wrap;justify-content:center;gap:6px 18px;font-family:var(--display),system-ui,sans-serif;font-size:.85rem}
 .home-links a{color:#9fb0c6;text-decoration:none}
 .home-links a:hover{color:var(--teal);text-decoration:underline}
+.home-band{position:relative;z-index:2;background:var(--bg);border-top:1px solid rgba(255,255,255,.1);padding:8px 20px 64px}
+.home-band-inner{width:min(760px,100%);margin:0 auto}
+.home-band h2{margin:36px 0 8px;text-align:left;font-size:1.6rem;letter-spacing:-.02em;text-shadow:none;color:var(--amber)}
+.home-band .doc-lede{font-size:1.15rem;line-height:1.55;color:var(--ink);margin:0 0 8px}
 
 /* Written pages: guides, about, privacy. The body never scrolls, so this container does. */
 .doc{position:fixed;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);display:flex;flex-direction:column}
 .doc a{color:var(--teal)}
 .doc-top{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:calc(env(safe-area-inset-top) + 12px) 20px 12px;background:rgba(14,20,36,.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.1);font-family:var(--display),system-ui,sans-serif}
-.doc-top nav{display:flex;gap:18px;font-size:.9rem}
+.doc-top nav{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px 18px;font-size:.9rem}
 .doc-top a{text-decoration:none}
 .doc-brand{font-weight:800;font-size:1.1rem;color:var(--ink)!important}
 .doc-main{flex:1;width:100%;max-width:760px;margin:0 auto;padding:28px 20px 48px}

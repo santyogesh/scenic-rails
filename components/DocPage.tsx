@@ -10,6 +10,7 @@ export default function DocPage({ children }: { children: React.ReactNode }) {
         <Link href="/" className="doc-brand">{SITE_NAME}</Link>
         <nav aria-label="Main">
           <Link href="/routes">Route guides</Link>
+          <Link href="/guides">Guides</Link>
           <Link href="/about">About</Link>
         </nav>
       </header>

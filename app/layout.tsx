@@ -15,6 +15,7 @@ export const metadata: Metadata = {
     title: "Scenic Rails",
     description: "Train routes mapped with the sights worth looking up for.",
   },
+  other: { monetag: "bff1dfe537a7ef92f5a5ff04e0de0c3e" },
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#070b14" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
