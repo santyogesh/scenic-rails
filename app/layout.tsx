@@ -22,6 +22,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(s){s.dataset.zone='12245972',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
+          }}
+        />
         <script src="https://quge5.com/88/tag.min.js" data-zone="309215" async data-cfasync="false" />
       </head>
       <body>{children}<PullToRefresh /><Analytics /><SpeedInsights /></body>
