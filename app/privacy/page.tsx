@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import DocPage from "@/components/DocPage";
+import { pageMeta } from "@/lib/seo";
 import { CONTACT_EMAIL, SITE_URL } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Privacy policy | Scenic Rails",
+export const metadata = pageMeta({
+  title: "Privacy policy",
   description: "How Scenic Rails handles data, cookies and advertising.",
-  alternates: { canonical: "/privacy" },
-};
+  path: "/privacy",
+});
 
 export default function Privacy() {
   return (

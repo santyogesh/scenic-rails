@@ -1,15 +1,15 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import DocPage from "@/components/DocPage";
 import AdSense from "@/components/AdSense";
 import { guides } from "@/data/guides";
 import { routesByRegion } from "@/data/routes";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Scenic train route guides | Scenic Rails",
-  description: "Guides to the world's most scenic railway journeys: what you will see, when to go, which side to sit on and how to book.",
-  alternates: { canonical: "/routes" },
-};
+export const metadata = pageMeta({
+  title: "Scenic train route guides",
+  description: "Guides to scenic railway journeys in India, Switzerland, Scotland and Norway: what you will see, when to go, which side to sit on and how to book.",
+  path: "/routes",
+});
 
 export default function RoutesIndex() {
   const groups = routesByRegion();

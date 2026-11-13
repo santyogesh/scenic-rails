@@ -1,14 +1,14 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import DocPage from "@/components/DocPage";
 import AdSense from "@/components/AdSense";
 import { guides } from "@/data/guides";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Practical guides | Scenic Rails",
+export const metadata = pageMeta({
+  title: "Practical guides",
   description: "How to choose a side of the train, and how the Scenic Rails live map decides what you are passing.",
-  alternates: { canonical: "/guides" },
-};
+  path: "/guides",
+});
 
 export default function GuidesIndex() {
   return (

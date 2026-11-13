@@ -585,6 +585,7 @@ export default function Home() {
         <CountryPicker value={country} onChange={changeCountry} />
         <div className="center">
           <h1>Scenic<br />Rails</h1>
+          <p className="hero-lede">A live map of your train, with the sights on each side of the track.</p>
           <form onSubmit={go} className="glass">
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={countryInfo.example} aria-label={`Train number or stations in ${countryInfo.name}`} enterKeyHint="go" autoComplete="off" />
             {isTrainNo(q.trim(), country) && dates.length > 0 && (
@@ -617,7 +618,7 @@ export default function Home() {
       <section className="home-band" aria-label="Guides">
         <div className="home-band-inner">
           <h2>Scenic route guides</h2>
-          <p className="doc-lede">What you will see from the window, when to go, and which side of the carriage to sit on.</p>
+          <p className="doc-lede">What you will see from the train window, when to go, and which side of the carriage to sit on. Look up a train number to see the scenery on your left and your right.</p>
           {routesByRegion().map((group) => (
             <section key={group.region}>
               <h2>{group.region}</h2>

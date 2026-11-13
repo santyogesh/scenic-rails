@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import DocPage from "@/components/DocPage";
 import AdSense from "@/components/AdSense";
+import JsonLd from "@/components/JsonLd";
 import { guides } from "@/data/guides";
+import { articleJsonLd, breadcrumbJsonLd, pageMeta } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -14,8 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const guide = guides.find((g) => g.slug === slug);
   if (!guide) return {};
-  const title = `${guide.title} | Scenic Rails`;
-  return { title, description: guide.description, alternates: { canonical: `/guides/${guide.slug}` }, openGraph: { title, description: guide.description } };
+  return pageMeta({ title: guide.title, description: guide.description, path: `/guides/${guide.slug}` });
 }
 
 function Paragraph({ text }: { text: string }) {
@@ -38,8 +39,17 @@ export default async function GuidePage({ params }: Props) {
   const guide = guides.find((g) => g.slug === slug);
   if (!guide) notFound();
   const others = guides.filter((g) => g.slug !== slug);
+  const path = `/guides/${guide.slug}`;
   return (
     <DocPage>
+      <JsonLd data={[
+        breadcrumbJsonLd([
+          { name: "Scenic Rails", path: "/" },
+          { name: "Practical guides", path: "/guides" },
+          { name: guide.title, path },
+        ]),
+        articleJsonLd({ headline: guide.title, description: guide.description, path }),
+      ]} />
       <article className="doc-article">
         <p className="doc-crumbs"><Link href="/guides">Practical guides</Link></p>
         <h1>{guide.title}</h1>

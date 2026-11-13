@@ -9,6 +9,7 @@ h1,h2,button{font-family:var(--display),system-ui,sans-serif}
 .center{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;pointer-events:none}
 .center>*{pointer-events:auto}
 h1{margin:0;text-align:center;font-size:clamp(3.4rem,13vw,8rem);line-height:.9;letter-spacing:-.04em;text-shadow:0 0 40px rgba(94,234,212,.45)}
+.hero-lede{margin:0;max-width:28rem;text-align:center;color:#c5d4e4;font-size:1.05rem;line-height:1.45;text-wrap:balance}
 form{display:flex;width:min(680px,100%);border-radius:999px;padding:6px}
 input{flex:1;min-width:0;background:none;border:0;color:var(--ink);font:inherit;font-size:1.05rem;padding:14px 20px}
 input::placeholder{color:#9fb0c6}

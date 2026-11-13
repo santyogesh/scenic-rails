@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
 import DocPage from "@/components/DocPage";
+import { pageMeta } from "@/lib/seo";
 import { CONTACT_EMAIL, ISSUES_URL } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Contact | Scenic Rails",
-  description: "How to report a problem, suggest a route or get in touch with Scenic Rails.",
-  alternates: { canonical: "/contact" },
-};
+export const metadata = pageMeta({
+  title: "Contact",
+  description: "How to report a problem, suggest a scenic route, or get in touch with Scenic Rails.",
+  path: "/contact",
+});
 
 export default function Contact() {
   return (

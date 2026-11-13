@@ -3,18 +3,18 @@ import { Bricolage_Grotesque, Newsreader } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import PullToRefresh from "@/components/PullToRefresh";
-import { SITE_URL } from "@/lib/site";
+import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--display" });
 const body = Newsreader({ subsets: ["latin"], variable: "--body" });
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Scenic Rails",
-  description: "Train routes mapped with the sights worth looking up for.",
-  openGraph: {
-    title: "Scenic Rails",
-    description: "Train routes mapped with the sights worth looking up for.",
-  },
+  title: { default: HOME_TITLE, template: `%s | ${SITE_NAME}` },
+  description: HOME_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: { siteName: SITE_NAME, locale: "en_US", type: "website" },
+  twitter: { card: "summary_large_image" },
   other: { monetag: "bff1dfe537a7ef92f5a5ff04e0de0c3e" },
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#070b14" };

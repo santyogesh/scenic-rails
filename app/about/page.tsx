@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import DocPage from "@/components/DocPage";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "About | Scenic Rails",
-  description: "What Scenic Rails is, where its data comes from, and how it works.",
-  alternates: { canonical: "/about" },
-};
+export const metadata = pageMeta({
+  title: "About",
+  description: "What Scenic Rails is, where its train map data comes from, and how the scenic route guides work.",
+  path: "/about",
+});
 
 export default function About() {
   return (

@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import Journey from "@/components/Journey";
 import DocPage from "@/components/DocPage";
 import AdSense from "@/components/AdSense";
+import JsonLd from "@/components/JsonLd";
 import { routes } from "@/data/routes";
+import { articleJsonLd, breadcrumbJsonLd, pageMeta } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -14,8 +16,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const route = routes.find((r) => r.slug === slug);
   if (!route) return {};
-  const title = `${route.name}: scenic train guide | Scenic Rails`;
-  return { title, description: route.blurb, alternates: { canonical: `/routes/${route.slug}` }, openGraph: { title, description: route.blurb } };
+  return pageMeta({
+    title: `${route.name}: scenic train guide`,
+    description: route.blurb,
+    path: `/routes/${route.slug}`,
+  });
 }
 
 export default async function RoutePage({ params }: Props) {
@@ -23,8 +28,17 @@ export default async function RoutePage({ params }: Props) {
   const route = routes.find((r) => r.slug === slug);
   if (!route) notFound();
   const others = routes.filter((r) => r.slug !== slug);
+  const path = `/routes/${route.slug}`;
   return (
     <DocPage>
+      <JsonLd data={[
+        breadcrumbJsonLd([
+          { name: "Scenic Rails", path: "/" },
+          { name: "Scenic route guides", path: "/routes" },
+          { name: route.name, path },
+        ]),
+        articleJsonLd({ headline: `${route.name}: scenic train guide`, description: route.blurb, path }),
+      ]} />
       <article className="doc-article">
         <p className="doc-crumbs"><Link href="/routes">Scenic route guides</Link></p>
         <h1>{route.name}</h1>
