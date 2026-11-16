@@ -17,6 +17,7 @@ import SideSheet, { sheetRows } from "@/components/SideSheet";
 import TimelineSheet from "@/components/TimelineSheet";
 import CountryPicker from "@/components/CountryPicker";
 import { DEFAULT_COUNTRY, getCountry, isCountry, todayIn } from "@/lib/countries";
+import { sceneryFaqs } from "@/data/faqs";
 import { guides } from "@/data/guides";
 import { routesByRegion } from "@/data/routes";
 import type { Side } from "@/lib/side";
@@ -635,6 +636,21 @@ export default function Home() {
               </ul>
             </section>
           ))}
+          <h2>Scenery from the train window</h2>
+          <p>
+            On the train, look up the number and the map names the hills, rivers, coasts, forts and towns outside, and which side of the carriage they are on.
+            The guides cover the Konkan Railway, Kalka–Shimla, the Darjeeling Himalayan Railway, the Nilgiri Mountain Railway, the Kangra Valley Railway,
+            Visakhapatnam to Araku, the Glacier Express, the Bernina Express, the West Highland Line, the Bergen Line and the Flåm Railway.
+          </p>
+          <h2>Questions travellers ask</h2>
+          <div className="faq">
+            {sceneryFaqs.map((faq) => (
+              <details key={faq.question}>
+                <summary>{faq.question}</summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
+          </div>
           <h2>Practical guides</h2>
           <ul className="doc-cards">
             {guides.map((g) => (

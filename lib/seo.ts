@@ -1,11 +1,34 @@
 import type { Metadata } from "next";
 import { SITE_NAME, SITE_URL } from "./site";
 
-export const HOME_TITLE = "Scenic Rails: live train map and scenic routes";
+export const HOME_TITLE = "Scenery from the train window — Scenic Rails";
 export const HOME_DESCRIPTION =
-  "See the scenery from your train window: landmarks on your left and right, plus guides to scenic railways in India, Switzerland, Scotland and Norway.";
+  "See the scenery from your train window: landmarks on your left and right, which side to sit, and guides to scenic railways in India, Switzerland, Scotland and Norway.";
 
-type PageArgs = { title: string; description: string; path: string };
+/** Phrases the homepage and route guides actually discuss. */
+export const HOME_KEYWORDS = [
+  "scenery from the train window",
+  "train window view",
+  "what to see from the train",
+  "which side of the train to sit on",
+  "landmarks along a train route",
+  "scenic train routes",
+  "scenic railway",
+  "train journey scenery",
+  "Konkan Railway scenery",
+  "Kalka Shimla train window",
+  "Darjeeling toy train route",
+  "Nilgiri Mountain Railway",
+  "Kangra Valley Railway",
+  "Visakhapatnam to Araku train",
+  "Glacier Express scenery",
+  "Bernina Express window",
+  "West Highland Line scenery",
+  "Bergen Line scenery",
+  "Flåm Railway route",
+];
+
+type PageArgs = { title: string; description: string; path: string; keywords?: string[] };
 
 const shareImage = {
   url: "/opengraph-image",
@@ -31,10 +54,11 @@ function social(title: string, description: string, path: string): Pick<Metadata
 }
 
 /** Title is the page name. The root layout appends " | Scenic Rails". */
-export function pageMeta({ title, description, path }: PageArgs): Metadata {
+export function pageMeta({ title, description, path, keywords }: PageArgs): Metadata {
   return {
     title,
     description,
+    ...(keywords ? { keywords } : {}),
     alternates: { canonical: path },
     ...social(`${title} | ${SITE_NAME}`, description, path),
   };
@@ -44,6 +68,7 @@ export function homeMeta(): Metadata {
   return {
     title: { absolute: HOME_TITLE },
     description: HOME_DESCRIPTION,
+    keywords: HOME_KEYWORDS,
     alternates: { canonical: "/" },
     ...social(HOME_TITLE, HOME_DESCRIPTION, "/"),
   };
@@ -80,6 +105,18 @@ export function breadcrumbJsonLd(crumbs: { name: string; path: string }[]) {
       position: index + 1,
       name: crumb.name,
       item: crumb.path === "/" ? `${SITE_URL}/` : `${SITE_URL}${crumb.path}`,
+    })),
+  };
+}
+
+export function faqJsonLd(faqs: { question: string; answer: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((faq) => ({
+      "@type": "Question",
+      name: faq.question,
+      acceptedAnswer: { "@type": "Answer", text: faq.answer },
     })),
   };
 }

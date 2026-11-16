@@ -6,9 +6,24 @@ import { routesByRegion } from "@/data/routes";
 import { pageMeta } from "@/lib/seo";
 
 export const metadata = pageMeta({
-  title: "Scenic train route guides",
-  description: "Guides to scenic railway journeys in India, Switzerland, Scotland and Norway: what you will see, when to go, which side to sit on and how to book.",
+  title: "Scenic train routes and window scenery",
+  description: "Scenery from the train on the Konkan Railway, Kalka–Shimla, Darjeeling, Nilgiri, Kangra Valley, Araku, Glacier Express, Bernina Express, West Highland Line, Bergen Line and Flåm Railway.",
   path: "/routes",
+  keywords: [
+    "scenic train routes",
+    "scenery from the train window",
+    "which side to sit on a scenic train",
+    "Konkan Railway route",
+    "Kalka Shimla Railway",
+    "Darjeeling Himalayan Railway",
+    "Nilgiri Mountain Railway scenery",
+    "Kangra Valley Railway",
+    "Glacier Express route",
+    "Bernina Express scenery",
+    "West Highland Line route",
+    "Bergen Line train",
+    "Flåm Railway scenery",
+  ],
 });
 
 export default function RoutesIndex() {

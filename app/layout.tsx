@@ -15,20 +15,11 @@ export const metadata: Metadata = {
   applicationName: SITE_NAME,
   openGraph: { siteName: SITE_NAME, locale: "en_US", type: "website" },
   twitter: { card: "summary_large_image" },
-  other: { monetag: "bff1dfe537a7ef92f5a5ff04e0de0c3e" },
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#070b14" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(s){s.dataset.zone='12245972',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
-          }}
-        />
-        <script src="https://quge5.com/88/tag.min.js" data-zone="309215" async data-cfasync="false" />
-      </head>
       <body>{children}<PullToRefresh /><Analytics /><SpeedInsights /></body>
     </html>
   );

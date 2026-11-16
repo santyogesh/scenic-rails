@@ -17,9 +17,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const route = routes.find((r) => r.slug === slug);
   if (!route) return {};
   return pageMeta({
-    title: `${route.name}: scenic train guide`,
-    description: route.blurb,
+    title: `${route.name}: scenery from the train`,
+    description: `${route.blurb} What you see from the window on the ${route.name}, and which side of the train to sit.`,
     path: `/routes/${route.slug}`,
+    keywords: [
+      `${route.name} scenery`,
+      `${route.name} train window`,
+      `${route.name} which side to sit`,
+      `${route.name} route`,
+      "scenery from the train window",
+    ],
   });
 }
 
@@ -37,7 +44,7 @@ export default async function RoutePage({ params }: Props) {
           { name: "Scenic route guides", path: "/routes" },
           { name: route.name, path },
         ]),
-        articleJsonLd({ headline: `${route.name}: scenic train guide`, description: route.blurb, path }),
+        articleJsonLd({ headline: `${route.name}: scenery from the train`, description: route.blurb, path }),
       ]} />
       <article className="doc-article">
         <p className="doc-crumbs"><Link href="/routes">Scenic route guides</Link></p>
